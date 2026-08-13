@@ -37,6 +37,7 @@ class LayoutOut(BaseModel):
     total_questions: int
     options: str
     is_builtin: bool
+    has_sample: bool = False
     preview: dict | None = None
 
     model_config = {"from_attributes": True}
@@ -79,6 +80,7 @@ class ExamOut(BaseModel):
     unattempted_marks: float
     layout_id: int
     layout_name: str = ""
+    total_questions: int = 0
     status: str
     created_at: datetime
     subject_maps: list[SubjectMapOut] = []

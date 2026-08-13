@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, Exam } from "../api";
 
 type Sheet = {
@@ -14,6 +14,8 @@ type Sheet = {
   left_count: number;
   error_message: string;
 };
+
+const OPTIONS = ["A", "B", "C", "D"];
 
 export default function EvaluationPanel({
   exam,
@@ -33,24 +35,51 @@ export default function EvaluationPanel({
   const keyRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
   const id = exam.id;
+  const total = exam.total_questions || 40;
+  const [answers, setAnswers] = useState<Record<string, string>>(exam.answer_key || {});
+
+  useEffect(() => {
+    setAnswers(exam.answer_key || {});
+  }, [exam.id, exam.answer_key]);
+
+  const saveKey = async () => {
+    setErr("");
+    const payload: Record<string, string> = {};
+    for (let q = 1; q <= total; q += 1) {
+      const letter = answers[String(q)];
+      if (letter) payload[String(q)] = letter;
+    }
+    await api.put(`/api/exams/${id}/answer-key`, { answer_key: payload });
+    setKeyString(Array.from({ length: total }, (_, i) => payload[String(i + 1)] || "").join(""));
+    setMsg(`Answer key saved (${Object.keys(payload).length} questions).`);
+    onReload();
+  };
 
   return (
     <>
       <div className="card">
-        <h3>Upload answer key</h3>
-        <p className="muted">Paste A/B/C/D in question order, or upload a text/CSV file or a filled key OMR image.</p>
-        <textarea rows={4} value={keyString} onChange={(e) => setKeyString(e.target.value)} style={{ width: "100%" }} />
+        <h3>Answer key</h3>
+        <p className="muted">Each question number is shown with options A–D. You can also upload a key file or filled key sheet.</p>
+        <div className="key-grid">
+          {Array.from({ length: total }, (_, i) => i + 1).map((q) => (
+            <div className="key-item" key={q}>
+              <strong>Q{String(q).padStart(2, "0")}</strong>
+              {OPTIONS.map((letter) => (
+                <label key={letter}>
+                  <input
+                    type="radio"
+                    name={`q-${q}`}
+                    checked={answers[String(q)] === letter}
+                    onChange={() => setAnswers({ ...answers, [String(q)]: letter })}
+                  />
+                  {letter}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
         <p>
-          <button onClick={async () => {
-            setErr("");
-            try {
-              await api.put(`/api/exams/${id}/answer-key`, { key_string: keyString });
-              setMsg(`Answer key saved (${keyString.replace(/[^ABCD]/gi, "").length} questions).`);
-              onReload();
-            } catch (error) {
-              setErr(error instanceof Error ? error.message : "Could not save key");
-            }
-          }}>Save typed key</button>
+          <button onClick={saveKey}>Save answer key</button>
           {" "}
           <input
             ref={keyRef}

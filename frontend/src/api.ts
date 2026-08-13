@@ -1,9 +1,16 @@
 const json = async (res: Response) => {
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || res.statusText);
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = text;
   }
-  return res.json();
+  if (!res.ok) {
+    const detail = typeof data === "object" && data && "detail" in data ? (data as { detail: unknown }).detail : null;
+    throw new Error(typeof detail === "string" ? detail : text || res.statusText);
+  }
+  return data;
 };
 
 export const api = {
@@ -37,6 +44,8 @@ export type Layout = {
   description: string;
   total_questions: number;
   options: string;
+  is_builtin?: boolean;
+  has_sample?: boolean;
   preview?: { default_maps: { subject: string; start_q: number; end_q: number }[] };
 };
 export type Exam = {
@@ -50,6 +59,7 @@ export type Exam = {
   unattempted_marks: number;
   layout_id: number;
   layout_name: string;
+  total_questions?: number;
   status: string;
   subject_maps: { id: number; subject_id: number; start_q: number; end_q: number; subject_name: string }[];
   answer_key: Record<string, string>;

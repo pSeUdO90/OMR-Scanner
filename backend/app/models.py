@@ -51,6 +51,7 @@ class OmrLayout(Base):
     options: Mapped[str] = mapped_column(String(20), default="ABCD")
     config_json: Mapped[str] = mapped_column(Text)
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=True)
+    sample_path: Mapped[str] = mapped_column(String(500), default="")
 
 
 class Exam(Base):

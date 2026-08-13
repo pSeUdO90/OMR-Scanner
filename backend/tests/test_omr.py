@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
-from app.main import app
+from app.main import app, _ensure_columns
 from app.models import Student
 from app.omr.generator import generate_sheet
 from app.omr.layouts import gyana_vikash_180
@@ -11,6 +11,7 @@ from app.seed import seed_reference_data
 
 def setup_module():
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
     with SessionLocal() as db:
         seed_reference_data(db)
 
@@ -109,3 +110,22 @@ def test_student_import_and_exam_flow(tmp_path):
     assert csv_body.status_code == 200
     assert b"Aarav Mishra" in csv_body.content
     assert b"Physics R" in csv_body.content
+    blocked = client.delete(f"/api/subjects/{subjects['Physics']}")
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == "Subject Associated with Exam. Cannot be Deleted"
+    free = client.post("/api/subjects", json={"name": "TempDeleteMe", "code": "TMP"})
+    assert free.status_code == 200
+    ok = client.delete(f"/api/subjects/{free.json()['id']}")
+    assert ok.status_code == 200
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (48, 48), (5, 26, 45)).save(buf, format="JPEG")
+    created_layout = client.post(
+        "/api/layouts",
+        data={"name": "Custom 20", "description": "Test", "total_questions": 20, "columns": 2, "options": "ABCD"},
+        files={"sample": ("sheet.jpg", buf.getvalue(), "image/jpeg")},
+    )
+    assert created_layout.status_code == 200, created_layout.text
+    assert created_layout.json()["has_sample"] is True
+    assert created_layout.json()["total_questions"] == 20

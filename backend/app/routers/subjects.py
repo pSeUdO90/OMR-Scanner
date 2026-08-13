@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Subject
+from ..models import ExamSubjectMap, Subject
 from ..schemas import SubjectIn, SubjectOut
 
 router = APIRouter(prefix="/api/subjects", tags=["subjects"])
+
+ASSOCIATED_MESSAGE = "Subject Associated with Exam. Cannot be Deleted"
 
 
 @router.get("", response_model=list[SubjectOut])
@@ -29,6 +31,9 @@ def delete_subject(subject_id: int, db: Session = Depends(get_db)):
     subject = db.get(Subject, subject_id)
     if not subject:
         raise HTTPException(404, "Subject not found")
+    attached = db.query(ExamSubjectMap).filter(ExamSubjectMap.subject_id == subject_id).first()
+    if attached:
+        raise HTTPException(409, ASSOCIATED_MESSAGE)
     db.delete(subject)
     db.commit()
     return {"ok": True}

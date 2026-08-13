@@ -109,6 +109,41 @@ def jee_main_90() -> dict[str, Any]:
     }
 
 
+def custom_grid_layout(
+    name: str,
+    slug: str,
+    total_questions: int,
+    columns: int,
+    options: str = "ABCD",
+    description: str = "",
+) -> dict[str, Any]:
+    columns = max(1, min(columns, 6))
+    total_questions = max(1, min(total_questions, 400))
+    per_col = (total_questions + columns - 1) // columns
+    questions = []
+    xs = [0.08 + i * (0.84 / columns) for i in range(columns)]
+    q = 1
+    for col in range(columns):
+        end = min(q + per_col - 1, total_questions)
+        questions += _q_column(q, end, xs[col], 0.22, 0.90)
+        q = end + 1
+        if q > total_questions:
+            break
+    return {
+        "slug": slug,
+        "name": name,
+        "description": description or f"Custom layout with {total_questions} questions in {columns} columns.",
+        "page_width": 1654,
+        "page_height": 2339,
+        "options": options or "ABCD",
+        "total_questions": total_questions,
+        "timing_marks": {"side_margin": 0.045, "min_count": 12},
+        "roll": _digit_grid(10, (0.35, 0.05), 0.028, 0.012, 0.0048),
+        "questions": questions,
+        "default_maps": [{"subject": "Paper", "code": "PAP", "start_q": 1, "end_q": total_questions}],
+    }
+
+
 BUILTIN_LAYOUTS = [gyana_vikash_180(), standard_100(), jee_main_90()]
 
 

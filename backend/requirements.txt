@@ -8,4 +8,4 @@ numpy==2.2.4
 pillow==11.2.1
 pydantic==2.11.3
 httpx==0.28.1
-pytest==8.3.5
+pypdfium2==4.30.0

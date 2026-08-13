@@ -17,6 +17,9 @@ def _ensure_columns() -> None:
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(exams)")).fetchall()}
         if cols and "sample_path" not in cols:
             conn.execute(text("ALTER TABLE exams ADD COLUMN sample_path VARCHAR(500) DEFAULT ''"))
+        layout_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(omr_layouts)")).fetchall()}
+        if layout_cols and "sample_path" not in layout_cols:
+            conn.execute(text("ALTER TABLE omr_layouts ADD COLUMN sample_path VARCHAR(500) DEFAULT ''"))
 
 
 def init_db() -> None:

@@ -44,6 +44,7 @@ def _exam_out(exam: Exam) -> ExamOut:
         unattempted_marks=exam.unattempted_marks,
         layout_id=exam.layout_id,
         layout_name=exam.layout.name if exam.layout else "",
+        total_questions=exam.layout.total_questions if exam.layout else 0,
         status=exam.status,
         created_at=exam.created_at,
         subject_maps=maps,
