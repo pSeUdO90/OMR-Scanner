@@ -1,0 +1,4 @@
+{
+  "name": "OMR-Scanner",
+  "install": "./scripts/cloud-agent-install.sh"
+}
