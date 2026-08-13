@@ -72,7 +72,7 @@ class Exam(Base):
     test_id: Mapped[str] = mapped_column(String(40), default="")
     test_no: Mapped[str] = mapped_column(String(40), default="")
     class_name: Mapped[str] = mapped_column(String(40), default="")
-    section: Mapped[str] = mapped_column(String(20), default="")
+    section: Mapped[str] = mapped_column(String(200), default="")
     batch: Mapped[str] = mapped_column(String(40), default="")
     field_map_json: Mapped[str] = mapped_column(Text, default="{}")
     grace_marks: Mapped[float] = mapped_column(Float, default=0.0)

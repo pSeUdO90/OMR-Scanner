@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font
 from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
@@ -34,12 +36,17 @@ def allocate_test_id(db: Session) -> str:
     return f"{highest + 1:04d}"
 
 
+def parse_csv_values(value: str | None) -> list[str]:
+    return [part.strip() for part in (value or "").replace(";", ",").split(",") if part.strip()]
+
+
 def assigned_students(db: Session, exam: Exam) -> list[Student]:
     query = db.query(Student)
     if exam.class_name:
         query = query.filter(Student.class_name == exam.class_name)
-    if exam.section:
-        query = query.filter(Student.section == exam.section)
+    sections = parse_csv_values(exam.section)
+    if sections:
+        query = query.filter(Student.section.in_(sections))
     if exam.batch:
         query = query.filter(Student.session == exam.batch)
     return query.order_by(Student.roll_no).all()
@@ -467,6 +474,76 @@ def exam_results_csv(exam_id: int, db: Session = Depends(get_db)):
     return StreamingResponse(
         iter([data]),
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/{exam_id}/results.xlsx")
+def exam_results_xlsx(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    analytics = build_analytics(exam)
+    wb = Workbook()
+    ranks = wb.active
+    ranks.title = "Rank list"
+    subject_names = [s["subject_name"] for s in analytics["subjects"]]
+    headers = ["Rank", "Roll No", "Name", "Class", "Section", "Right", "Wrong", "Left", "Invalid", "Score", "Max", "Percentage"]
+    headers += [f"{name} R" for name in subject_names]
+    headers += [f"{name} W" for name in subject_names]
+    headers += [f"{name} L" for name in subject_names]
+    ranks.append(headers)
+    for cell in ranks[1]:
+        cell.font = Font(bold=True)
+    for row in analytics["results"]:
+        by_subject = {s["subject_name"]: s for s in row["subjects"]}
+        ranks.append(
+            [
+                row["rank"],
+                row["roll_no"],
+                row["name"],
+                row["class_name"],
+                row["section"],
+                row["right"],
+                row["wrong"],
+                row["left"],
+                row["invalid"],
+                row["score"],
+                row["max_score"],
+                row["percentage"],
+            ]
+            + [by_subject.get(name, {}).get("right", "") for name in subject_names]
+            + [by_subject.get(name, {}).get("wrong", "") for name in subject_names]
+            + [by_subject.get(name, {}).get("left", "") for name in subject_names]
+        )
+
+    overall = wb.create_sheet("Overall RWL")
+    overall.append(["Exam", analytics["exam_name"]])
+    overall.append(["Appeared", analytics["appeared"]])
+    overall.append(["Average", analytics["average_score"]])
+    overall.append(["Highest", analytics["highest_score"]])
+    overall.append(["Lowest", analytics["lowest_score"]])
+    overall.append([])
+    overall.append(["Subject", "Right", "Wrong", "Left", "Invalid", "Accuracy", "Score", "Max"])
+    for cell in overall[7]:
+        cell.font = Font(bold=True)
+    rwl_rows = [analytics["overall_rwl"], *analytics["subjects"]]
+    for item in rwl_rows:
+        overall.append(
+            [item["subject_name"], item["right"], item["wrong"], item["left"], item["invalid"], item["accuracy"], item["score"], item["max_score"]]
+        )
+
+    items = wb.create_sheet("Item analysis")
+    items.append(["Question", "Key", "Right", "Wrong", "Left", "Invalid", "Difficulty"])
+    for cell in items[1]:
+        cell.font = Font(bold=True)
+    for item in analytics["item_analysis"]:
+        items.append([item["question_no"], item["correct"], item["right"], item["wrong"], item["left"], item["invalid"], item["difficulty"]])
+
+    buf = BytesIO()
+    wb.save(buf)
+    filename = f"{exam.name.replace(' ', '_')}_rwl.xlsx"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 

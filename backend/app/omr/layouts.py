@@ -151,7 +151,8 @@ def custom_grid_layout(
     }
 
 
-BUILTIN_LAYOUTS = [gyana_vikash_180(), standard_100(), jee_main_90()]
+BUILTIN_LAYOUTS: list[dict[str, Any]] = []
+RETIRED_LAYOUT_SLUGS = ("gyana-vikash-180", "standard-100", "jee-main-90")
 
 
 def layout_preview(layout: dict[str, Any]) -> dict[str, Any]:

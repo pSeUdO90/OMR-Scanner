@@ -2,11 +2,12 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
 from app.main import app, _ensure_columns
-from app.models import Student
+from app.models import OmrLayout, Student
 from app.omr.generator import generate_sheet
 from app.omr.layouts import gyana_vikash_180
 from app.omr.processor import evaluate_image
 from app.seed import seed_reference_data
+import json
 
 
 def setup_module():
@@ -40,6 +41,30 @@ def test_left_and_wrong_detection():
     assert result["answers"]["3"] == ""
 
 
+def _pcb_layout(client: TestClient):
+    layouts = client.get("/api/layouts").json()
+    existing = next((item for item in layouts if item["slug"] == "test-pcb-180"), None)
+    if existing:
+        return existing
+    cfg = gyana_vikash_180()
+    cfg["slug"] = "test-pcb-180"
+    cfg["name"] = "Test PCB 180"
+    with SessionLocal() as db:
+        row = OmrLayout(
+            slug="test-pcb-180",
+            name="Test PCB 180",
+            description="Test layout",
+            total_questions=180,
+            options="ABCD",
+            config_json=json.dumps(cfg),
+            is_builtin=False,
+        )
+        db.add(row)
+        db.commit()
+        layout_id = row.id
+    return client.get(f"/api/layouts/{layout_id}").json()
+
+
 def test_student_import_and_exam_flow(tmp_path):
     client = TestClient(app)
     with SessionLocal() as db:
@@ -47,8 +72,11 @@ def test_student_import_and_exam_flow(tmp_path):
             db.add(Student(roll_no="2400100001", name="Aarav Mishra", gender="M", class_name="12", section="A", session="2025-26"))
             db.commit()
 
-    layouts = client.get("/api/layouts").json()
-    gyana = next(item for item in layouts if item["slug"] == "gyana-vikash-180")
+    slugs = {item["slug"] for item in client.get("/api/layouts").json()}
+    assert "gyana-vikash-180" not in slugs
+    assert "standard-100" not in slugs
+    assert "jee-main-90" not in slugs
+    gyana = _pcb_layout(client)
     subjects = {row["name"]: row["id"] for row in client.get("/api/subjects").json()}
     exam = client.post(
         "/api/exams",
@@ -145,6 +173,9 @@ def test_student_import_and_exam_flow(tmp_path):
     assert csv_body.status_code == 200
     assert b"Aarav Mishra" in csv_body.content
     assert b"Physics R" in csv_body.content
+    xlsx_body = client.get(f"/api/exams/{exam_id}/results.xlsx")
+    assert xlsx_body.status_code == 200, xlsx_body.text
+    assert xlsx_body.content[:2] == b"PK"
     blocked = client.delete(f"/api/subjects/{subjects['Physics']}")
     assert blocked.status_code == 409
     assert blocked.json()["detail"] == "Subject Associated with Exam. Cannot be Deleted"
@@ -200,8 +231,6 @@ def test_student_import_and_exam_flow(tmp_path):
     assert client.get(f"/api/exams/{extra.json()['id']}").status_code == 404
     unused_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
     assert unused_layout.status_code == 200
-    builtin_delete = client.delete(f"/api/layouts/{gyana['id']}")
-    assert builtin_delete.status_code == 409
     student = next(s for s in client.get("/api/students").json() if s["roll_no"] == "2400100001")
     history = client.get(f"/api/students/{student['id']}/results").json()
     assert history["student"]["name"] == "Aarav Mishra"

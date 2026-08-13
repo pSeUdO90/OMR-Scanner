@@ -9,20 +9,27 @@ import LayoutDetail from "./pages/LayoutDetail";
 import Exams from "./pages/Exams";
 import ExamDetail from "./pages/ExamDetail";
 import Evaluation from "./pages/Evaluation";
+import Reports from "./pages/Reports";
 import Results from "./pages/Results";
 
 export default function App() {
   return (
     <div className="shell">
       <nav className="nav">
-        <h1>Gyana OMR</h1>
-        <p>Scan. Score. Publish RWL.</p>
+        <div className="brand">
+          <img src="/logo.jpg" alt="Gyana Vikash" />
+          <div>
+            <h1>Gyana Vikash OMR</h1>
+            <p>Scan. Score. Publish RWL.</p>
+          </div>
+        </div>
         <NavLink to="/" end><NavIcon name="dashboard" /> Dashboard</NavLink>
         <NavLink to="/students"><NavIcon name="students" /> Students</NavLink>
         <NavLink to="/subjects"><NavIcon name="subjects" /> Subjects</NavLink>
         <NavLink to="/layouts"><NavIcon name="layouts" /> OMR layouts</NavLink>
         <NavLink to="/exams"><NavIcon name="exams" /> Exams</NavLink>
         <NavLink to="/evaluation"><NavIcon name="evaluation" /> Evaluation</NavLink>
+        <NavLink to="/reports"><NavIcon name="reports" /> Reports</NavLink>
       </nav>
       <main className="main">
         <Routes>
@@ -36,6 +43,7 @@ export default function App() {
           <Route path="/exams/:id" element={<ExamDetail />} />
           <Route path="/exams/:id/results" element={<Results />} />
           <Route path="/evaluation" element={<Evaluation />} />
+          <Route path="/reports" element={<Reports />} />
         </Routes>
       </main>
     </div>

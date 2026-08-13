@@ -14,6 +14,7 @@ export const iconPaths = {
   exams: "M8 3h8v3H8V3ZM6 6h12v15H6V6Zm4 5h4M10 14h4",
   evaluation: "M5 12l4 4 10-10M5 19h14",
   results: "M5 19V9m7 10V5m7 14v-7",
+  reports: "M6 4h9l5 5v11H6V4Zm9 0v5h5M8 13h8M8 17h5",
   search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.3-4.3",
   upload: "M12 16V5m0 0 4 4M12 5 8 9M5 19h14",
   download: "M12 5v11m0 0 4-4m-4 4-4-4M5 19h14",

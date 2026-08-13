@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
 from ..omr.analyze import analyze_layout_config
-from ..omr.layouts import custom_grid_layout, layout_preview
+from ..omr.layouts import RETIRED_LAYOUT_SLUGS, custom_grid_layout, layout_preview
 from ..omr.processor import load_image
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import LayoutOut
@@ -36,7 +36,7 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
 
 @router.get("", response_model=list[LayoutOut])
 def list_layouts(db: Session = Depends(get_db)):
-    return [_layout_out(row) for row in db.query(OmrLayout).order_by(OmrLayout.id).all()]
+    return [_layout_out(row) for row in db.query(OmrLayout).filter(~OmrLayout.slug.in_(RETIRED_LAYOUT_SLUGS)).order_by(OmrLayout.id).all()]
 
 
 @router.get("/{layout_id}", response_model=LayoutOut)
@@ -194,8 +194,6 @@ def delete_layout(layout_id: int, db: Session = Depends(get_db)):
     row = db.get(OmrLayout, layout_id)
     if not row:
         raise HTTPException(404, "Layout not found")
-    if row.is_builtin:
-        raise HTTPException(409, "Built-in layout cannot be deleted")
     used = db.query(Exam).filter(Exam.layout_id == layout_id).first()
     if used:
         raise HTTPException(409, "Layout Associated with Exam. Cannot be Deleted")

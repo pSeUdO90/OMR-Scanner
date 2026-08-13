@@ -103,6 +103,7 @@ export default function Results() {
             setErr(error instanceof Error ? error.message : "Publish failed");
           }
         }}>Publish results</button>{" "}
+        <a className="btn" href={`/api/exams/${id}/results.xlsx`}>Export RWL Excel</a>{" "}
         <a className="btn" href={`/api/exams/${id}/results.csv`}>Download RWL CSV</a>
         {data.published && <span className="pill R"> Published</span>}
         {msg && <p>{msg}</p>}

@@ -71,7 +71,7 @@ export default function Exams() {
 
   return (
     <>
-      <PageTitle icon="exams" subtitle="Test ID is assigned automatically. Class, section, and batch come from the student list.">
+      <PageTitle icon="exams" subtitle="Assign batch first, then class and one or more sections from the student list. Test ID is generated automatically.">
         Create exam
       </PageTitle>
       <ExamForm

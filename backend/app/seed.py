@@ -4,8 +4,8 @@ import json
 
 from sqlalchemy.orm import Session
 
-from .models import OmrLayout, Subject
-from .omr.layouts import BUILTIN_LAYOUTS
+from .models import Exam, OmrLayout, Subject
+from .omr.layouts import BUILTIN_LAYOUTS, RETIRED_LAYOUT_SLUGS
 
 
 def seed_reference_data(db: Session) -> None:
@@ -20,6 +20,17 @@ def seed_reference_data(db: Session) -> None:
         ):
             db.add(Subject(name=name, code=code))
         db.commit()
+
+    for slug in RETIRED_LAYOUT_SLUGS:
+        row = db.query(OmrLayout).filter(OmrLayout.slug == slug).one_or_none()
+        if not row:
+            continue
+        used = db.query(Exam).filter(Exam.layout_id == row.id).first()
+        if used:
+            row.is_builtin = False
+            continue
+        db.delete(row)
+    db.commit()
 
     existing = {row.slug for row in db.query(OmrLayout).all()}
     for layout in BUILTIN_LAYOUTS:

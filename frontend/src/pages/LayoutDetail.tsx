@@ -88,16 +88,22 @@ export default function LayoutDetail() {
       {tab === "view" && (
         <>
           <div className="card">
-            <p className="muted">{layout.description}</p>
-            <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
-            <ul>
-              {(layout.preview?.default_maps || []).map((m) => (
-                <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>
-              ))}
-            </ul>
-            {layout.has_sample && (
-              <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
-            )}
+            <div className="layout-view">
+              <div>
+                <p className="muted">{layout.description}</p>
+                <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
+                <ul>
+                  {(layout.preview?.default_maps || []).map((m) => (
+                    <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>
+                  ))}
+                </ul>
+              </div>
+              {layout.has_sample ? (
+                <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
+              ) : (
+                <p className="muted">No sample image on file.</p>
+              )}
+            </div>
           </div>
           <div className="card">
             <FieldMapper

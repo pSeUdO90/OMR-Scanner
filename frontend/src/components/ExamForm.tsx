@@ -1,4 +1,4 @@
-import { FormEvent, useMemo } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Exam, Layout, Student, Subject } from "../api";
 import SubjectMapsEditor, { SubjectMapRow } from "./SubjectMapsEditor";
 
@@ -34,6 +34,62 @@ export function examToForm(exam: Exam): ExamFormState {
     section: exam.section || "",
     batch: exam.batch || "",
   };
+}
+
+function selectedList(value: string) {
+  return value.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
+function SectionChecklist({
+  options,
+  value,
+  disabled,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  disabled: boolean;
+  onChange: (next: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const selected = selectedList(value);
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+  const label = selected.length ? selected.join(", ") : "All sections";
+  return (
+    <div className="check-dropdown" ref={root}>
+      <button type="button" className="check-dropdown-toggle" disabled={disabled} onClick={() => setOpen((v) => !v)}>
+        <span>{label}</span>
+        <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="check-dropdown-menu">
+          {options.length === 0 && <p className="muted">No sections in student data.</p>}
+          {options.map((option) => (
+            <label key={option}>
+              <input
+                type="checkbox"
+                checked={selected.includes(option)}
+                onChange={() => {
+                  const next = selected.includes(option)
+                    ? selected.filter((item) => item !== option)
+                    : [...selected, option];
+                  onChange(next.join(", "));
+                }}
+              />
+              {option}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ExamForm({
@@ -73,79 +129,97 @@ export default function ExamForm({
     );
   };
   const selectedLayout = layouts.find((l) => l.id === form.layout_id);
-  const classes = useMemo(() => [...new Set(students.map((s) => s.class_name).filter(Boolean))].sort(), [students]);
-  const sections = useMemo(
-    () => [...new Set(students.filter((s) => !form.class_name || s.class_name === form.class_name).map((s) => s.section).filter(Boolean))].sort(),
-    [students, form.class_name]
-  );
   const batches = useMemo(
+    () => [...new Set(students.map((s) => s.session).filter(Boolean))].sort(),
+    [students]
+  );
+  const classes = useMemo(
+    () => [...new Set(students.filter((s) => !form.batch || s.session === form.batch).map((s) => s.class_name).filter(Boolean))].sort(),
+    [students, form.batch]
+  );
+  const sections = useMemo(
     () => [...new Set(students.filter((s) => {
+      if (form.batch && s.session !== form.batch) return false;
       if (form.class_name && s.class_name !== form.class_name) return false;
-      if (form.section && s.section !== form.section) return false;
-      return Boolean(s.session);
-    }).map((s) => s.session))].sort(),
-    [students, form.class_name, form.section]
+      return Boolean(s.section);
+    }).map((s) => s.section))].sort(),
+    [students, form.batch, form.class_name]
   );
   return (
-    <form className="card" onSubmit={onSubmit}>
+    <form className="card exam-form" onSubmit={onSubmit}>
       {locked && <p className="error">This exam has been evaluated. Only the answer key can still be changed.</p>}
-      <div className="row">
-        <label>Exam Name<input disabled={locked} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-        <label>Date<input disabled={locked} type="date" value={form.exam_date} onChange={(e) => setForm({ ...form, exam_date: e.target.value })} /></label>
-        <label>Type of Exam
-          <select disabled={locked} value={form.exam_type} onChange={(e) => setForm({ ...form, exam_type: e.target.value })}>
-            {["Unit Test", "Term", "Annual", "NEET Mock", "JEE Mock", "Custom"].map((t) => <option key={t}>{t}</option>)}
-          </select>
-        </label>
-        <label>Duration (minutes)<input disabled={locked} type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></label>
+      <div className="form-section">
+        <h3>Exam details</h3>
+        <div className="row">
+          <label>Exam Name<input disabled={locked} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
+          <label>Date<input disabled={locked} type="date" value={form.exam_date} onChange={(e) => setForm({ ...form, exam_date: e.target.value })} /></label>
+          <label>Type of Exam
+            <select disabled={locked} value={form.exam_type} onChange={(e) => setForm({ ...form, exam_type: e.target.value })}>
+              {["Unit Test", "Term", "Annual", "NEET Mock", "JEE Mock", "Custom"].map((t) => <option key={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Duration (minutes)<input disabled={locked} type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></label>
+        </div>
       </div>
-      <div className="row">
-        <label>Test ID<input value={form.test_id || "0001"} disabled readOnly /></label>
-        <label>Test No<input disabled={locked} value={form.test_no} onChange={(e) => setForm({ ...form, test_no: e.target.value })} /></label>
-        <label>Class
-          <select disabled={locked} value={form.class_name} onChange={(e) => setForm({ ...form, class_name: e.target.value, section: "", batch: "" })}>
-            <option value="">All classes</option>
-            {classes.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
-        <label>Section
-          <select disabled={locked} value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value, batch: "" })}>
-            <option value="">All sections</option>
-            {sections.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
-        <label>Batch
-          <select disabled={locked} value={form.batch} onChange={(e) => setForm({ ...form, batch: e.target.value })}>
-            <option value="">All batches</option>
-            {batches.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
+      <div className="form-section">
+        <h3>Assignment</h3>
+        <div className="row">
+          <label>Test ID<input value={form.test_id || "0001"} disabled readOnly /></label>
+          <label>Test No<input disabled={locked} value={form.test_no} onChange={(e) => setForm({ ...form, test_no: e.target.value })} /></label>
+        </div>
+        <div className="row">
+          <label>Batch
+            <select disabled={locked} value={form.batch} onChange={(e) => setForm({ ...form, batch: e.target.value, class_name: "", section: "" })}>
+              <option value="">All batches</option>
+              {batches.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          <label>Class
+            <select disabled={locked} value={form.class_name} onChange={(e) => setForm({ ...form, class_name: e.target.value, section: "" })}>
+              <option value="">All classes</option>
+              {classes.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          <label>Section
+            <SectionChecklist
+              options={sections}
+              value={form.section}
+              disabled={locked}
+              onChange={(section) => setForm({ ...form, section })}
+            />
+          </label>
+        </div>
       </div>
-      <h3>Marking scheme</h3>
-      <div className="row">
-        <label>Correct<input disabled={locked} type="number" step="0.5" value={form.correct_marks} onChange={(e) => setForm({ ...form, correct_marks: Number(e.target.value) })} /></label>
-        <label>Wrong<input disabled={locked} type="number" step="0.5" value={form.wrong_marks} onChange={(e) => setForm({ ...form, wrong_marks: Number(e.target.value) })} /></label>
-        <label>Left / unattempted<input disabled={locked} type="number" step="0.5" value={form.unattempted_marks} onChange={(e) => setForm({ ...form, unattempted_marks: Number(e.target.value) })} /></label>
+      <div className="form-section">
+        <h3>Marking scheme</h3>
+        <div className="row">
+          <label>Correct<input disabled={locked} type="number" step="0.5" value={form.correct_marks} onChange={(e) => setForm({ ...form, correct_marks: Number(e.target.value) })} /></label>
+          <label>Wrong<input disabled={locked} type="number" step="0.5" value={form.wrong_marks} onChange={(e) => setForm({ ...form, wrong_marks: Number(e.target.value) })} /></label>
+          <label>Left / unattempted<input disabled={locked} type="number" step="0.5" value={form.unattempted_marks} onChange={(e) => setForm({ ...form, unattempted_marks: Number(e.target.value) })} /></label>
+        </div>
       </div>
-      <h3>OMR layout</h3>
-      <div className="grid">
-        {layouts.map((l) => (
-          <button
-            key={l.id}
-            type="button"
-            disabled={locked}
-            className={form.layout_id === l.id ? "" : "ghost"}
-            onClick={() => {
-              setForm({ ...form, layout_id: l.id });
-              applyLayout(l);
-            }}
-          >
-            {l.name} ({l.total_questions} Q)
-          </button>
-        ))}
+      <div className="form-section">
+        <h3>OMR layout</h3>
+        <div className="grid">
+          {layouts.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              disabled={locked}
+              className={form.layout_id === l.id ? "" : "ghost"}
+              onClick={() => {
+                setForm({ ...form, layout_id: l.id });
+                applyLayout(l);
+              }}
+            >
+              {l.name} ({l.total_questions} Q)
+            </button>
+          ))}
+        </div>
+        {layouts.length === 0 && <p className="muted">Create an OMR layout first, then return here to assign it to the exam.</p>}
+        {selectedLayout && <p className="muted">{selectedLayout.description}</p>}
+        <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} locked={locked} />
       </div>
-      {selectedLayout && <p className="muted">{selectedLayout.description}</p>}
-      <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} locked={locked} />
       {!locked && <p><button type="submit">{submitLabel}</button></p>}
       {err && <p className="error">{err}</p>}
     </form>

@@ -52,7 +52,7 @@ def init_db() -> None:
 
 init_db()
 
-app = FastAPI(title="Gyana OMR Reader", version="1.0.0")
+app = FastAPI(title="Gyana Vikash OMR", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
