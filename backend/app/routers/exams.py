@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import csv
 import json
+from io import StringIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import UPLOAD_DIR, get_db
@@ -230,6 +232,49 @@ def publish_exam(exam_id: int, db: Session = Depends(get_db)):
 def exam_results(exam_id: int, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
     return build_analytics(exam)
+
+
+@router.get("/{exam_id}/results.csv")
+def exam_results_csv(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    analytics = build_analytics(exam)
+    buf = StringIO()
+    writer = csv.writer(buf)
+    subject_names = [s["subject_name"] for s in analytics["subjects"]]
+    writer.writerow(
+        ["Rank", "Roll No", "Name", "Class", "Section", "Right", "Wrong", "Left", "Invalid", "Score", "Max", "Percentage"]
+        + [f"{name} R" for name in subject_names]
+        + [f"{name} W" for name in subject_names]
+        + [f"{name} L" for name in subject_names]
+    )
+    for row in analytics["results"]:
+        by_subject = {s["subject_name"]: s for s in row["subjects"]}
+        writer.writerow(
+            [
+                row["rank"],
+                row["roll_no"],
+                row["name"],
+                row["class_name"],
+                row["section"],
+                row["right"],
+                row["wrong"],
+                row["left"],
+                row["invalid"],
+                row["score"],
+                row["max_score"],
+                row["percentage"],
+            ]
+            + [by_subject.get(name, {}).get("right", "") for name in subject_names]
+            + [by_subject.get(name, {}).get("wrong", "") for name in subject_names]
+            + [by_subject.get(name, {}).get("left", "") for name in subject_names]
+        )
+    data = buf.getvalue().encode("utf-8")
+    filename = f"{exam.name.replace(' ', '_')}_rwl.csv"
+    return StreamingResponse(
+        iter([data]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/{exam_id}/sheets/{sheet_id}/overlay")

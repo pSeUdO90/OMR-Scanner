@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, Exam } from "../api";
 
@@ -22,6 +22,8 @@ export default function ExamDetail() {
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [keyString, setKeyString] = useState("");
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const scanRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     const e = await api.get(`/api/exams/${id}`);
@@ -40,50 +42,85 @@ export default function ExamDetail() {
   return (
     <>
       <h2>{exam.name}</h2>
-      <p className="muted">{exam.exam_type} · {exam.exam_date} · {exam.duration_minutes} min · +{exam.correct_marks}/{exam.wrong_marks}/{exam.unattempted_marks} · layout {exam.layout_name}</p>
+      <p className="muted">
+        {exam.exam_type} · {exam.exam_date} · {exam.duration_minutes} min · marking +{exam.correct_marks}/{exam.wrong_marks}/{exam.unattempted_marks} · layout {exam.layout_name}
+      </p>
       <div className="card">
         <h3>Question mapping</h3>
-        {exam.subject_maps.map((m) => <p key={m.id}>{m.subject_name}: Q{m.start_q}–Q{m.end_q}</p>)}
+        {exam.subject_maps.map((m) => (
+          <p key={m.id}>
+            {m.subject_name}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)
+          </p>
+        ))}
       </div>
       <div className="card">
         <h3>Answer key</h3>
-        <p className="muted">Paste a string of A/B/C/D in question order, or generate a filled key sheet.</p>
+        <p className="muted">Paste A/B/C/D in question order (length should match the layout).</p>
         <textarea rows={4} value={keyString} onChange={(e) => setKeyString(e.target.value)} style={{ width: "100%" }} />
         <p>
           <button onClick={async () => {
-            await api.put(`/api/exams/${id}/answer-key`, { key_string: keyString });
-            setMsg("Answer key saved.");
-            load();
+            setErr("");
+            try {
+              await api.put(`/api/exams/${id}/answer-key`, { key_string: keyString });
+              setMsg(`Answer key saved (${keyString.replace(/[^ABCD]/gi, "").length} questions).`);
+              load();
+            } catch (error) {
+              setErr(error instanceof Error ? error.message : "Could not save key");
+            }
           }}>Save key</button>
         </p>
       </div>
       <div className="card">
         <h3>Upload scanned OMR sheets</h3>
-        <input type="file" multiple accept="image/*" onChange={async (e) => {
-          if (!e.target.files?.length) return;
-          const data = new FormData();
-          for (const file of Array.from(e.target.files)) data.append("files", file);
-          await fetch(`/api/exams/${id}/sheets`, { method: "POST", body: data }).then((r) => r.json());
-          load();
-        }} />
-        <p className="muted">Need a test sheet? Generate one from the current key and a roll number.</p>
-        <button className="secondary" onClick={async () => {
-          const roll = prompt("Roll number to bubble", "2400100001");
+        <input
+          ref={scanRef}
+          type="file"
+          multiple
+          accept="image/*"
+          hidden
+          onChange={async (e) => {
+            if (!e.target.files?.length) return;
+            setErr("");
+            const data = new FormData();
+            for (const file of Array.from(e.target.files)) data.append("files", file);
+            try {
+              await fetch(`/api/exams/${id}/sheets`, { method: "POST", body: data }).then((r) => {
+                if (!r.ok) throw new Error("Upload failed");
+                return r.json();
+              });
+              setMsg(`Uploaded ${e.target.files.length} sheet(s).`);
+              load();
+            } catch (error) {
+              setErr(error instanceof Error ? error.message : "Upload failed");
+            }
+          }}
+        />
+        <button type="button" onClick={() => scanRef.current?.click()}>Upload scanned OMR sheets</button>
+        {" "}
+        <button className="secondary" type="button" onClick={async () => {
+          const roll = prompt("Roll number to bubble on a sample sheet", "2400100001");
           if (!roll) return;
           const data = new FormData();
           data.append("roll", roll);
           await api.post(`/api/exams/${id}/sample-sheet`, data);
+          setMsg("Sample filled sheet added. You can evaluate it like a scan.");
           load();
         }}>Generate sample filled sheet</button>
       </div>
       <div className="card">
         <button onClick={async () => {
-          const res = await api.post(`/api/exams/${id}/evaluate`);
-          setMsg(`Evaluated ${res.evaluated} sheet(s).`);
-          load();
-        }}>Evaluate uploaded sheets</button>{" "}
-        <Link className="btn" to={`/exams/${id}/results`}>RWL results</Link>
+          setErr("");
+          try {
+            const res = await api.post(`/api/exams/${id}/evaluate`);
+            setMsg(`Evaluated ${res.evaluated} sheet(s).`);
+            load();
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : "Evaluation failed");
+          }
+        }}>Evaluate uploaded OMR sheets</button>{" "}
+        <Link className="btn" to={`/exams/${id}/results`}>Publish / RWL results</Link>
         {msg && <p>{msg}</p>}
+        {err && <p className="error">{err}</p>}
       </div>
       <div className="card">
         <h3>Sheets</h3>

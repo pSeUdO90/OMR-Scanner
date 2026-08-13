@@ -80,3 +80,7 @@ def test_student_import_and_exam_flow(tmp_path):
     assert results["overall_rwl"]["right"] == 180
     published = client.post(f"/api/exams/{exam_id}/publish")
     assert published.status_code == 200
+    csv_body = client.get(f"/api/exams/{exam_id}/results.csv")
+    assert csv_body.status_code == 200
+    assert b"Aarav Mishra" in csv_body.content
+    assert b"Physics R" in csv_body.content
