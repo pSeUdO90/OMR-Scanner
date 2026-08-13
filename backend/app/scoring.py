@@ -8,6 +8,37 @@ from sqlalchemy.orm import Session
 from .models import Exam, ExamSheet, SheetQuestionResult, Student
 
 
+def parse_question_numbers(value) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        nums = []
+        for item in value:
+            try:
+                nums.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return sorted(set(n for n in nums if n > 0))
+    text = str(value).replace(";", ",")
+    nums: set[int] = set()
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            left, right = part.split("-", 1)
+            if left.strip().isdigit() and right.strip().isdigit():
+                lo, hi = int(left), int(right)
+                nums.update(range(min(lo, hi), max(lo, hi) + 1))
+        elif part.isdigit():
+            nums.add(int(part))
+    return sorted(n for n in nums if n > 0)
+
+
+def grace_questions(exam: Exam) -> set[int]:
+    return set(parse_question_numbers(json.loads(getattr(exam, "grace_questions_json", None) or "[]")))
+
+
 def subject_for_question(exam: Exam, question_no: int):
     for mapping in exam.subject_maps:
         if mapping.start_q <= question_no <= mapping.end_q:
@@ -32,7 +63,11 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
         marked = (answers.get(str(q)) or "").strip().upper()
         correct = (key.get(str(q)) or "").strip().upper()
         mapping = subject_for_question(exam, q)
-        if marked in ("", None):
+        if q in grace_questions(exam):
+            rwl = "R"
+            right += 1
+            score += exam.correct_marks
+        elif marked in ("", None):
             rwl = "L"
             left += 1
             score += exam.unattempted_marks
@@ -65,22 +100,18 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
     sheet.wrong_count = wrong
     sheet.left_count = left
     sheet.invalid_count = invalid
-    sheet.raw_score = round(score + (getattr(exam, "grace_marks", 0) or 0), 2)
+    sheet.raw_score = round(score, 2)
     sheet.max_score = round(max_score, 2)
     sheet.status = "evaluated" if student else "unmatched"
     sheet.error_message = "" if student else "Roll number not found in student list"
 
 
-def apply_grace_to_sheet(exam: Exam, sheet: ExamSheet) -> None:
-    if sheet.status not in ("evaluated", "unmatched"):
-        return
-    base = (
-        sheet.right_count * exam.correct_marks
-        + sheet.wrong_count * exam.wrong_marks
-        + sheet.left_count * exam.unattempted_marks
-        + sheet.invalid_count * exam.wrong_marks
-    )
-    sheet.raw_score = round(base + (getattr(exam, "grace_marks", 0) or 0), 2)
+def rescore_stored_sheets(db: Session, exam: Exam) -> None:
+    for sheet in exam.sheets:
+        if sheet.status not in ("evaluated", "unmatched"):
+            continue
+        answers = json.loads(sheet.answers_json or "{}")
+        score_sheet(db, exam, sheet, answers, sheet.detected_roll)
 
 
 def rwl_bucket(rows: list[SheetQuestionResult], exam: Exam, name: str, subject_id, start_q: int, end_q: int) -> dict:

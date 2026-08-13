@@ -71,8 +71,12 @@ class Exam(Base):
     sample_path: Mapped[str] = mapped_column(String(500), default="")
     test_id: Mapped[str] = mapped_column(String(40), default="")
     test_no: Mapped[str] = mapped_column(String(40), default="")
+    class_name: Mapped[str] = mapped_column(String(40), default="")
+    section: Mapped[str] = mapped_column(String(20), default="")
+    batch: Mapped[str] = mapped_column(String(40), default="")
     field_map_json: Mapped[str] = mapped_column(Text, default="{}")
     grace_marks: Mapped[float] = mapped_column(Float, default=0.0)
+    grace_questions_json: Mapped[str] = mapped_column(Text, default="[]")
     status: Mapped[str] = mapped_column(String(20), default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 

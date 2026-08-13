@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Exam } from "../api";
+import { DeleteButton, EditLink } from "../components/ActionButtons";
 import EvaluationPanel from "../components/EvaluationPanel";
 
 type Sheet = {
@@ -55,12 +56,10 @@ export default function Evaluation() {
             {exams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
-        {exam && <Link className="btn" to={`/exams/${exam.id}?tab=edit`}>Edit exam</Link>}
+        {exam && <EditLink to={`/exams/${exam.id}?tab=edit`}>Edit</EditLink>}
         {exam && <Link className="btn secondary" to={`/exams/${exam.id}/results`}>RWL results</Link>}
         {exam && (
-          <button
-            type="button"
-            className="ghost"
+          <DeleteButton
             onClick={async () => {
               if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
               await api.del(`/api/exams/${exam.id}`);
@@ -70,8 +69,8 @@ export default function Evaluation() {
               setExamId(rows[0]?.id || 0);
             }}
           >
-            Delete exam
-          </button>
+            Delete
+          </DeleteButton>
         )}
       </div>
       {exam ? (

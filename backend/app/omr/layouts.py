@@ -118,6 +118,7 @@ def custom_grid_layout(
     columns: int,
     options: str = "ABCD",
     description: str = "",
+    default_maps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     columns = max(1, min(columns, 6))
     total_questions = max(1, min(total_questions, 400))
@@ -145,7 +146,8 @@ def custom_grid_layout(
         "test_no": _digit_grid(3, (0.62, 0.05), 0.026, 0.012, 0.0048),
         "date": _digit_grid(6, (0.76, 0.05), 0.022, 0.012, 0.0045),
         "questions": questions,
-        "default_maps": [{"subject": "Paper", "code": "PAP", "start_q": 1, "end_q": total_questions}],
+        "default_maps": default_maps
+        or [{"subject": "Paper", "code": "PAP", "start_q": 1, "end_q": total_questions}],
     }
 
 

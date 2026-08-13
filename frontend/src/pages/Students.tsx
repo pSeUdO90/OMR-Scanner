@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Student } from "../api";
+import { DeleteButton } from "../components/ActionButtons";
 
 const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
 const labels: Record<string, string> = {
@@ -118,8 +119,8 @@ export default function Students() {
                 <td>{s.roll_no}</td><td>{s.name}</td><td>{s.gender}</td><td>{s.class_name}</td><td>{s.section}</td><td>{s.session}</td>
                 <td>
                   <Link to={`/students/${s.id}`}>View</Link>
-                  {" · "}
-                  <button type="button" className="ghost" onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</button>
+                  {" "}
+                  <DeleteButton onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</DeleteButton>
                 </td>
               </tr>
             ))}

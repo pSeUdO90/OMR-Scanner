@@ -63,6 +63,9 @@ def test_student_import_and_exam_flow(tmp_path):
             "layout_id": gyana["id"],
             "test_id": "NEET-01",
             "test_no": "12",
+            "class_name": "12",
+            "section": "A",
+            "batch": "2025-26",
             "subject_maps": [
                 {"subject_id": subjects["Physics"], "start_q": 1, "end_q": 45},
                 {"subject_id": subjects["Chemistry"], "start_q": 46, "end_q": 90},
@@ -73,13 +76,14 @@ def test_student_import_and_exam_flow(tmp_path):
     )
     assert exam.status_code == 200, exam.text
     exam_id = exam.json()["id"]
-    assert exam.json()["test_id"] == "NEET-01"
-    assert exam.json()["test_no"] == "12"
+    assert exam.json()["class_name"] == "12"
+    assert exam.json()["section"] == "A"
+    assert exam.json()["batch"] == "2025-26"
     before = len(client.get("/api/exams").json())
     edited = client.put(
         f"/api/exams/{exam_id}",
         json={
-            "name": "NEET Mock 1 (edited)",
+            "name": "NEET Mock 1",
             "exam_date": "2026-08-13",
             "exam_type": "NEET Mock",
             "duration_minutes": 200,
@@ -89,6 +93,9 @@ def test_student_import_and_exam_flow(tmp_path):
             "layout_id": gyana["id"],
             "test_id": "NEET-01B",
             "test_no": "13",
+            "class_name": "12",
+            "section": "B",
+            "batch": "2025-26",
             "subject_maps": [
                 {"subject_id": subjects["Physics"], "start_q": 1, "end_q": 45},
                 {"subject_id": subjects["Chemistry"], "start_q": 46, "end_q": 90},
@@ -99,7 +106,8 @@ def test_student_import_and_exam_flow(tmp_path):
     assert edited.status_code == 200, edited.text
     assert edited.json()["id"] == exam_id
     assert edited.json()["duration_minutes"] == 200
-    assert edited.json()["test_id"] == "NEET-01B"
+    assert edited.json()["name"] == "NEET Mock 1"
+    assert edited.json()["section"] == "B"
     assert len(client.get("/api/exams").json()) == before
     key_upload = client.post(
         f"/api/exams/{exam_id}/answer-key/upload",
@@ -115,12 +123,23 @@ def test_student_import_and_exam_flow(tmp_path):
     assert results["results"][0]["right"] == 180
     assert results["overall_rwl"]["right"] == 180
     assert results["results"][0]["score"] == 720
-    grace = client.put(f"/api/exams/{exam_id}/grace", json={"grace_marks": 5})
+    grace = client.put(f"/api/exams/{exam_id}/grace", json={"questions": "2, 3, 10-12"})
     assert grace.status_code == 200, grace.text
-    assert grace.json()["grace_marks"] == 5
+    assert grace.json()["grace_questions"] == [2, 3, 10, 11, 12]
     results = client.get(f"/api/exams/{exam_id}/results").json()
-    assert results["results"][0]["score"] == 725
+    assert results["results"][0]["score"] == 720
     assert results["results"][0]["right"] == 180
+    locked = client.put(
+        f"/api/exams/{exam_id}",
+        json={
+            "name": "Should not change",
+            "exam_date": "2026-08-13",
+            "exam_type": "NEET Mock",
+            "layout_id": gyana["id"],
+        },
+    )
+    assert locked.status_code == 409
+    assert client.get(f"/api/exams/{exam_id}").json()["name"] == "NEET Mock 1"
     published = client.post(f"/api/exams/{exam_id}/publish")
     assert published.status_code == 200
     csv_body = client.get(f"/api/exams/{exam_id}/results.csv")
@@ -140,12 +159,15 @@ def test_student_import_and_exam_flow(tmp_path):
     Image.new("RGB", (48, 48), (5, 26, 45)).save(buf, format="JPEG")
     created_layout = client.post(
         "/api/layouts",
-        data={"name": "Custom 20", "description": "Test", "total_questions": 20, "columns": 2, "options": "ABCD"},
+        data={"name": "Custom 20", "description": "Test", "total_questions": 20, "columns": 2, "options": "ABCD", "subject_maps": '[{"subject":"Physics","start_q":1,"end_q":10},{"subject":"Chemistry","start_q":11,"end_q":20}]'},
         files={"sample": ("sheet.jpg", buf.getvalue(), "image/jpeg")},
     )
     assert created_layout.status_code == 200, created_layout.text
     assert created_layout.json()["has_sample"] is True
     assert created_layout.json()["total_questions"] == 20
+    preview_maps = created_layout.json()["preview"]["default_maps"]
+    assert preview_maps[0]["subject"] == "Physics"
+    assert preview_maps[1]["end_q"] == 20
     keys = {item["key"] for item in created_layout.json()["analysis"]}
     assert {"roll", "test_id", "test_no", "date", "answers"} <= keys
     mapped = client.post(
@@ -181,5 +203,5 @@ def test_student_import_and_exam_flow(tmp_path):
     neet = next(row for row in history["exams"] if row["exam_id"] == exam_id)
     assert neet["right"] == 180
     assert neet["overall_rwl"]["right"] == 180
-    assert neet["score"] == 725
+    assert neet["score"] == 720
     assert neet["subjects"]

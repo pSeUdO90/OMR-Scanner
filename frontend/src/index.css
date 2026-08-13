@@ -81,6 +81,46 @@ button, .btn {
 }
 button.secondary, .btn.secondary { background: var(--cyan); color: #051A2D; }
 button.ghost { background: transparent; color: var(--sunset); border: 1px solid #FEA24F66; }
+.btn-edit, a.btn-edit {
+  background: #FEA24F;
+  color: #051A2D;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn-edit.active { box-shadow: 0 0 0 2px #10BBC3; }
+.btn-delete, a.btn-delete {
+  background: #A60E35;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.answer-key-toolbar { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: start; margin-bottom: 0.8rem; }
+.key-block { margin: 0.8rem 0 1.1rem; }
+.key-block h4 { color: var(--cyan); font-size: 0.95rem; margin-bottom: 0.45rem; }
+.key-opts { display: flex; gap: 0.25rem; }
+button.opt {
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border-radius: 8px;
+  background: #061e32;
+  color: var(--ink);
+  border: 1px solid #14505c;
+  font-weight: 700;
+}
+button.opt.on { background: #FEA24F; color: #051A2D; border-color: #FEA24F; }
 button.danger { background: var(--crimson); }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--line); }
@@ -106,11 +146,13 @@ th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(
   color: var(--ink);
 }
 .tabs a.active, .tabs button.active { background: var(--teal); border-color: var(--cyan); }
+.tabs .btn-edit { background: #FEA24F; color: #051A2D; border: 0; }
+.tabs .btn-delete { background: #A60E35; color: #fff; border: 0; }
 .sample-preview { max-width: 100%; max-height: 360px; border: 1px solid var(--line); border-radius: 12px; }
 .key-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 0.4rem;
   max-height: none;
   overflow: visible;
 }

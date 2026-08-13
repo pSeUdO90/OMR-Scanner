@@ -18,7 +18,7 @@ from ..omr.generator import generate_sheet
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import AnswerKeyIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
-from ..scoring import apply_grace_to_sheet, build_analytics, score_sheet
+from ..scoring import build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
 
@@ -57,7 +57,10 @@ def _exam_out(exam: Exam, *, with_analysis: bool = False) -> ExamOut:
         has_sample=bool(getattr(exam, "sample_path", "")),
         test_id=getattr(exam, "test_id", "") or "",
         test_no=getattr(exam, "test_no", "") or "",
-        grace_marks=getattr(exam, "grace_marks", 0) or 0,
+        class_name=getattr(exam, "class_name", "") or "",
+        section=getattr(exam, "section", "") or "",
+        batch=getattr(exam, "batch", "") or "",
+        grace_questions=json.loads(getattr(exam, "grace_questions_json", None) or "[]"),
         field_map=json.loads(getattr(exam, "field_map_json", None) or "{}")
         or json.loads(getattr(exam.layout, "field_map_json", None) or "{}"),
         analysis=_exam_analysis(exam) if with_analysis else [],
@@ -117,7 +120,9 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
         answer_key_json=json.dumps(payload.answer_key),
         test_id=payload.test_id,
         test_no=payload.test_no,
-        grace_marks=payload.grace_marks,
+        class_name=payload.class_name,
+        section=payload.section,
+        batch=payload.batch,
         status="draft",
     )
     db.add(exam)
@@ -166,6 +171,8 @@ def get_exam(exam_id: int, db: Session = Depends(get_db)):
 @router.put("/{exam_id}", response_model=ExamOut)
 def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
+    if exam.status in ("evaluated", "published"):
+        raise HTTPException(409, "Exam already evaluated. Only the answer key can be changed.")
     layout = db.get(OmrLayout, payload.layout_id)
     if not layout:
         raise HTTPException(400, "Layout not found")
@@ -179,10 +186,10 @@ def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
     exam.layout_id = payload.layout_id
     exam.test_id = payload.test_id
     exam.test_no = payload.test_no
-    exam.grace_marks = payload.grace_marks
+    exam.class_name = payload.class_name
+    exam.section = payload.section
+    exam.batch = payload.batch
     _replace_subject_maps(db, exam, payload.subject_maps, layout)
-    for sheet in exam.sheets:
-        apply_grace_to_sheet(exam, sheet)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
 
@@ -190,9 +197,8 @@ def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
 @router.put("/{exam_id}/grace", response_model=ExamOut)
 def set_grace_marks(exam_id: int, payload: GraceIn, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
-    exam.grace_marks = payload.grace_marks
-    for sheet in exam.sheets:
-        apply_grace_to_sheet(exam, sheet)
+    exam.grace_questions_json = json.dumps(parse_question_numbers(payload.questions))
+    rescore_stored_sheets(db, exam)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
 

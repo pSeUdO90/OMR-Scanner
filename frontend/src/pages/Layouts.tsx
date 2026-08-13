@@ -1,9 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, Layout } from "../api";
+import { api, Layout, Subject } from "../api";
+import { DeleteButton, EditLink } from "../components/ActionButtons";
+import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
 
 export default function Layouts() {
   const [rows, setRows] = useState<Layout[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -14,8 +17,17 @@ export default function Layouts() {
     columns: 4,
     options: "ABCD",
   });
+  const [maps, setMaps] = useState<SubjectMapRow[]>([{ subject: "Paper", start_q: 1, end_q: 100 }]);
 
-  const load = () => api.get("/api/layouts").then(setRows);
+  const load = () => {
+    api.get("/api/layouts").then(setRows);
+    api.get("/api/subjects").then((list: Subject[]) => {
+      setSubjects(list);
+      if (list.length && maps.length === 1 && maps[0].subject === "Paper") {
+        setMaps([{ subject_id: list[0].id, subject: list[0].name, start_q: 1, end_q: form.total_questions }]);
+      }
+    });
+  };
   useEffect(() => { load(); }, []);
 
   const onCreate = async (e: FormEvent) => {
@@ -32,6 +44,11 @@ export default function Layouts() {
     data.append("total_questions", String(form.total_questions));
     data.append("columns", String(form.columns));
     data.append("options", form.options);
+    data.append("subject_maps", JSON.stringify(maps.map((m) => ({
+      subject: subjects.find((s) => s.id === m.subject_id)?.name || m.subject,
+      start_q: m.start_q,
+      end_q: m.end_q,
+    }))));
     data.append("sample", file);
     try {
       await api.post("/api/layouts", data);
@@ -58,7 +75,7 @@ export default function Layouts() {
   return (
     <>
       <h2>OMR layouts</h2>
-      <p className="muted">Create a layout from a printed sample (PDF or JPG), then select it when you create an exam.</p>
+      <p className="muted">Create a layout from a printed sample, then map subjects to question ranges.</p>
       <form className="card" onSubmit={onCreate}>
         <h3>Create a new layout</h3>
         <div className="row">
@@ -68,6 +85,7 @@ export default function Layouts() {
           <label>Options<input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} /></label>
         </div>
         <label>Description<input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+        <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} />
         <p className="muted">Sample OMR (PDF or JPG) is required.</p>
         <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/*" required />
         <p><button type="submit">Create layout</button></p>
@@ -80,6 +98,11 @@ export default function Layouts() {
             <h3>{layout.name}</h3>
             <p className="muted">{layout.description}</p>
             <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
+            <ul>
+              {(layout.preview?.default_maps || []).map((m) => (
+                <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1})</li>
+              ))}
+            </ul>
             {layout.has_sample ? (
               <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
             ) : (
@@ -87,8 +110,8 @@ export default function Layouts() {
             )}
             <div className="actions">
               <Link className="btn" to={`/layouts/${layout.id}`}>View</Link>
-              <Link className="btn" to={`/layouts/${layout.id}?tab=edit`}>Edit</Link>
-              <button type="button" className="ghost" onClick={() => onDelete(layout)}>Delete</button>
+              <EditLink to={`/layouts/${layout.id}?tab=edit`}>Edit</EditLink>
+              <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
             </div>
           </div>
         ))}

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, Subject } from "../api";
+import { DeleteButton } from "../components/ActionButtons";
 
 export default function Subjects() {
   const [rows, setRows] = useState<Subject[]>([]);
@@ -35,9 +36,7 @@ export default function Subjects() {
                 <td>{s.name}</td>
                 <td>{s.code}</td>
                 <td>
-                  <button
-                    type="button"
-                    className="danger"
+                  <DeleteButton
                     onClick={async () => {
                       setErr("");
                       try {
@@ -49,7 +48,7 @@ export default function Subjects() {
                     }}
                   >
                     Delete
-                  </button>
+                  </DeleteButton>
                 </td>
               </tr>
             ))}

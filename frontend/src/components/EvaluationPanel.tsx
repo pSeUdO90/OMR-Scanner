@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, Exam } from "../api";
 
 type Sheet = {
@@ -37,12 +37,24 @@ export default function EvaluationPanel({
   const id = exam.id;
   const total = exam.total_questions || 40;
   const [answers, setAnswers] = useState<Record<string, string>>(exam.answer_key || {});
-  const [grace, setGrace] = useState(exam.grace_marks ?? 0);
+  const [graceText, setGraceText] = useState((exam.grace_questions || []).join(", "));
 
   useEffect(() => {
     setAnswers(exam.answer_key || {});
-    setGrace(exam.grace_marks ?? 0);
-  }, [exam.id, exam.answer_key, exam.grace_marks]);
+    setGraceText((exam.grace_questions || []).join(", "));
+  }, [exam.id, exam.answer_key, exam.grace_questions]);
+
+  const groups = useMemo(() => {
+    if (exam.subject_maps?.length) {
+      return exam.subject_maps.map((m) => ({
+        title: m.subject_name,
+        questions: Array.from({ length: Math.max(0, m.end_q - m.start_q + 1) }, (_, i) => m.start_q + i),
+      }));
+    }
+    return [{ title: "All questions", questions: Array.from({ length: total }, (_, i) => i + 1) }];
+  }, [exam.subject_maps, total]);
+
+  const filled = Object.keys(answers).filter((k) => answers[k]).length;
 
   const saveKey = async () => {
     setErr("");
@@ -59,55 +71,94 @@ export default function EvaluationPanel({
 
   return (
     <>
-      <div className="card">
-        <h3>Answer key</h3>
-        <p className="muted">Each question number is shown with options A–D. You can also upload a key file or filled key sheet.</p>
-        <div className="key-grid">
-          {Array.from({ length: total }, (_, i) => i + 1).map((q) => (
-            <div className="key-item" key={q}>
-              <strong>Q{String(q).padStart(2, "0")}</strong>
-              {OPTIONS.map((letter) => (
-                <label key={letter}>
-                  <input
-                    type="radio"
-                    name={`q-${q}`}
-                    checked={answers[String(q)] === letter}
-                    onChange={() => setAnswers({ ...answers, [String(q)]: letter })}
-                  />
-                  {letter}
-                </label>
+      <div className="card answer-key-card">
+        <div className="answer-key-toolbar">
+          <div>
+            <h3>Answer key</h3>
+            <p className="muted">Tap A–D for each question. {filled}/{total} marked.</p>
+          </div>
+          <div className="row" style={{ flex: "0 0 auto" }}>
+            <input
+              ref={keyRef}
+              type="file"
+              accept="image/*,.txt,.csv"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const data = new FormData();
+                data.append("file", file);
+                try {
+                  const updated = await api.post(`/api/exams/${id}/answer-key/upload`, data);
+                  const letters = Object.entries(updated.answer_key || {})
+                    .sort((a, b) => Number(a[0]) - Number(b[0]))
+                    .map(([, v]) => v)
+                    .join("");
+                  setKeyString(letters);
+                  setMsg(`Answer key uploaded (${letters.length} questions).`);
+                  onReload();
+                } catch (error) {
+                  setErr(error instanceof Error ? error.message : "Key upload failed");
+                }
+              }}
+            />
+            <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload key file</button>
+            <button type="button" onClick={saveKey}>Save answer key</button>
+          </div>
+        </div>
+        {groups.map((group) => (
+          <section className="key-block" key={group.title}>
+            <h4>{group.title}</h4>
+            <div className="key-grid">
+              {group.questions.map((q) => (
+                <div className="key-item" key={q}>
+                  <strong>Q{String(q).padStart(2, "0")}</strong>
+                  <div className="key-opts">
+                    {OPTIONS.map((letter) => (
+                      <button
+                        key={letter}
+                        type="button"
+                        className={answers[String(q)] === letter ? "opt on" : "opt"}
+                        onClick={() => setAnswers({ ...answers, [String(q)]: letter })}
+                      >
+                        {letter}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-          ))}
-        </div>
-        <p>
-          <button onClick={saveKey}>Save answer key</button>
-          {" "}
+          </section>
+        ))}
+      </div>
+      <div className="card">
+        <h3>Grace questions</h3>
+        <p className="muted">Enter question numbers that receive grace (full marks). Use commas or ranges, for example 12, 18, 40-42.</p>
+        <label>
+          Question numbers
           <input
-            ref={keyRef}
-            type="file"
-            accept="image/*,.txt,.csv"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const data = new FormData();
-              data.append("file", file);
+            value={graceText}
+            onChange={(e) => setGraceText(e.target.value)}
+            placeholder="e.g. 12, 18, 40-42"
+          />
+        </label>
+        <p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={async () => {
+              setErr("");
               try {
-                const updated = await api.post(`/api/exams/${id}/answer-key/upload`, data);
-                const letters = Object.entries(updated.answer_key || {})
-                  .sort((a, b) => Number(a[0]) - Number(b[0]))
-                  .map(([, v]) => v)
-                  .join("");
-                setKeyString(letters);
-                setMsg(`Answer key uploaded (${letters.length} questions).`);
+                await api.put(`/api/exams/${id}/grace`, { questions: graceText });
+                setMsg("Grace questions saved.");
                 onReload();
               } catch (error) {
-                setErr(error instanceof Error ? error.message : "Key upload failed");
+                setErr(error instanceof Error ? error.message : "Could not save grace questions");
               }
             }}
-          />
-          <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload answer key file</button>
+          >
+            Save grace questions
+          </button>
         </p>
       </div>
       <div className="card">
@@ -145,36 +196,6 @@ export default function EvaluationPanel({
           setMsg("Generated sheet added to the scan queue.");
           onReload();
         }}>Generate filled practice sheet</button>
-      </div>
-      <div className="card">
-        <h3>Grace marks</h3>
-        <p className="muted">Added to every evaluated sheet’s score. RWL counts stay the same.</p>
-        <div className="row">
-          <label>Grace marks
-            <input
-              type="number"
-              step="0.5"
-              value={grace}
-              onChange={(e) => setGrace(Number(e.target.value))}
-            />
-          </label>
-          <button
-            type="button"
-            className="secondary"
-            onClick={async () => {
-              setErr("");
-              try {
-                await api.put(`/api/exams/${id}/grace`, { grace_marks: grace });
-                setMsg(`Grace marks set to ${grace}.`);
-                onReload();
-              } catch (error) {
-                setErr(error instanceof Error ? error.message : "Could not save grace marks");
-              }
-            }}
-          >
-            Save grace marks
-          </button>
-        </div>
       </div>
       <div className="card">
         <button onClick={async () => {

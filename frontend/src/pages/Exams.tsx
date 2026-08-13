@@ -1,13 +1,14 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Exam, Layout, Subject } from "../api";
+import { DeleteButton, EditLink } from "../components/ActionButtons";
 import ExamForm, { ExamFormState } from "../components/ExamForm";
 
 export default function Exams() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [maps, setMaps] = useState<{ subject_id: number; start_q: number; end_q: number }[]>([]);
+  const [maps, setMaps] = useState<{ subject_id?: number; subject?: string; start_q: number; end_q: number }[]>([]);
   const [err, setErr] = useState("");
   const [form, setForm] = useState<ExamFormState>({
     name: "",
@@ -20,6 +21,9 @@ export default function Exams() {
     layout_id: 0,
     test_id: "",
     test_no: "",
+    class_name: "",
+    section: "",
+    batch: "",
   });
 
   useEffect(() => {
@@ -35,6 +39,7 @@ export default function Exams() {
           setMaps(
             (layout.preview?.default_maps || []).map((m) => ({
               subject_id: byName[m.subject] || subjectRows[0]?.id || 0,
+              subject: m.subject,
               start_q: m.start_q,
               end_q: m.end_q,
             }))
@@ -59,7 +64,7 @@ export default function Exams() {
   return (
     <>
       <h2>Create exam</h2>
-      <p className="muted">Exam Name, Date, Type, Marking Scheme, Duration, OMR layout, and start–end question map per subject.</p>
+      <p className="muted">Exam Name, Date, Type, Class, Section, Batch, marking, duration, OMR layout, and question map per subject.</p>
       <ExamForm
         form={form}
         setForm={setForm}
@@ -74,25 +79,23 @@ export default function Exams() {
       <div className="card">
         <h3>All exams</h3>
         <table>
-          <thead><tr><th>Exam Name</th><th>Date</th><th>Type</th><th>Test ID</th><th>Test No</th><th>Layout</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Exam Name</th><th>Date</th><th>Class</th><th>Section</th><th>Batch</th><th>Type</th><th>Test ID</th><th>Layout</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {exams.map((exam) => (
               <tr key={exam.id}>
                 <td><Link to={`/exams/${exam.id}`}>{exam.name}</Link></td>
                 <td>{exam.exam_date}</td>
+                <td>{exam.class_name || "—"}</td>
+                <td>{exam.section || "—"}</td>
+                <td>{exam.batch || "—"}</td>
                 <td>{exam.exam_type}</td>
                 <td>{exam.test_id || "—"}</td>
-                <td>{exam.test_no || "—"}</td>
                 <td>{exam.layout_name}</td>
                 <td>{exam.status}</td>
-                <td>
-                  <Link to={`/exams/${exam.id}?tab=edit`}>Edit</Link>
-                  {" · "}
-                  <Link to={`/exams/${exam.id}?tab=evaluation`}>Evaluate</Link>
-                  {" · "}
-                  <button
-                    type="button"
-                    className="ghost"
+                <td className="row-actions">
+                  <EditLink to={`/exams/${exam.id}?tab=edit`}>Edit</EditLink>
+                  <Link className="btn secondary" to={`/exams/${exam.id}?tab=evaluation`}>Evaluate</Link>
+                  <DeleteButton
                     onClick={async () => {
                       if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
                       try {
@@ -104,7 +107,7 @@ export default function Exams() {
                     }}
                   >
                     Delete
-                  </button>
+                  </DeleteButton>
                 </td>
               </tr>
             ))}
