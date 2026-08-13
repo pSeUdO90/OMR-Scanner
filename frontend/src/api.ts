@@ -55,4 +55,5 @@ export type Exam = {
   answer_key: Record<string, string>;
   sheet_count: number;
   evaluated_count: number;
+  has_sample?: boolean;
 };

@@ -66,6 +66,7 @@ class Exam(Base):
     unattempted_marks: Mapped[float] = mapped_column(Float, default=0.0)
     layout_id: Mapped[int] = mapped_column(ForeignKey("omr_layouts.id"))
     answer_key_json: Mapped[str] = mapped_column(Text, default="{}")
+    sample_path: Mapped[str] = mapped_column(String(500), default="")
     status: Mapped[str] = mapped_column(String(20), default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 

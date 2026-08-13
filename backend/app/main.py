@@ -4,17 +4,26 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from .database import Base, SessionLocal, engine
 from .routers import exams, layouts, students, subjects
 from .seed import seed_reference_data
 
+
+def _ensure_columns() -> None:
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(exams)")).fetchall()}
+        if cols and "sample_path" not in cols:
+            conn.execute(text("ALTER TABLE exams ADD COLUMN sample_path VARCHAR(500) DEFAULT ''"))
+
+
 def init_db() -> None:
     try:
         Base.metadata.create_all(bind=engine, checkfirst=True)
+        _ensure_columns()
     except OperationalError:
-        # Snapshot or previous run already created tables.
         pass
     with SessionLocal() as db:
         seed_reference_data(db)

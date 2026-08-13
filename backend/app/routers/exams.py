@@ -50,6 +50,7 @@ def _exam_out(exam: Exam) -> ExamOut:
         answer_key=json.loads(exam.answer_key_json or "{}"),
         sheet_count=len(sheets),
         evaluated_count=sum(1 for s in sheets if s.status in ("evaluated", "unmatched")),
+        has_sample=bool(getattr(exam, "sample_path", "")),
     )
 
 
@@ -95,9 +96,15 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
     )
     db.add(exam)
     db.flush()
+    _replace_subject_maps(db, exam, payload.subject_maps, layout)
+    db.commit()
+    return _exam_out(_load_exam(db, exam.id))
+
+
+def _replace_subject_maps(db: Session, exam: Exam, payload_maps: list, layout: OmrLayout) -> None:
     maps = [
         {"subject_id": m.subject_id, "start_q": m.start_q, "end_q": m.end_q}
-        for m in payload.subject_maps
+        for m in payload_maps
     ]
     if not maps:
         preview = json.loads(layout.config_json).get("default_maps", [])
@@ -112,6 +119,7 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
                         "end_q": item["end_q"],
                     }
                 )
+    db.query(ExamSubjectMap).filter(ExamSubjectMap.exam_id == exam.id).delete()
     for mapping in maps:
         db.add(
             ExamSubjectMap(
@@ -121,13 +129,82 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
                 end_q=mapping["end_q"],
             )
         )
-    db.commit()
-    return _exam_out(_load_exam(db, exam.id))
 
 
 @router.get("/{exam_id}", response_model=ExamOut)
 def get_exam(exam_id: int, db: Session = Depends(get_db)):
     return _exam_out(_load_exam(db, exam_id))
+
+
+@router.put("/{exam_id}", response_model=ExamOut)
+def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    layout = db.get(OmrLayout, payload.layout_id)
+    if not layout:
+        raise HTTPException(400, "Layout not found")
+    exam.name = payload.name
+    exam.exam_date = payload.exam_date
+    exam.exam_type = payload.exam_type
+    exam.duration_minutes = payload.duration_minutes
+    exam.correct_marks = payload.correct_marks
+    exam.wrong_marks = payload.wrong_marks
+    exam.unattempted_marks = payload.unattempted_marks
+    exam.layout_id = payload.layout_id
+    _replace_subject_maps(db, exam, payload.subject_maps, layout)
+    db.commit()
+    return _exam_out(_load_exam(db, exam.id))
+
+
+@router.post("/{exam_id}/sample")
+async def upload_omr_sample(exam_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    dest_dir = UPLOAD_DIR / f"exam-{exam.id}"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "sample.png").suffix or ".png"
+    stored = dest_dir / f"omr-sample{suffix}"
+    stored.write_bytes(await file.read())
+    exam.sample_path = str(stored)
+    db.commit()
+    return {"ok": True, "filename": file.filename}
+
+
+@router.get("/{exam_id}/sample")
+def get_omr_sample(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    if not exam.sample_path or not Path(exam.sample_path).exists():
+        raise HTTPException(404, "No OMR sample uploaded")
+    return FileResponse(exam.sample_path)
+
+
+@router.post("/{exam_id}/answer-key/upload", response_model=ExamOut)
+async def upload_answer_key(exam_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    raw = await file.read()
+    name = (file.filename or "").lower()
+    key: dict[str, str] = {}
+    if name.endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp")):
+        dest = UPLOAD_DIR / f"exam-{exam.id}" / f"key-{uuid4().hex}{Path(name).suffix or '.png'}"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(raw)
+        layout = parse_layout(exam.layout.config_json)
+        result = evaluate_image(load_image(dest), layout)
+        key = {q: ans for q, ans in result["answers"].items() if ans and ans != "MULTI"}
+    else:
+        text = raw.decode("utf-8", errors="ignore")
+        letters = [ch.upper() for ch in text if ch.upper() in "ABCD"]
+        if "," in text or "\t" in text:
+            key = {}
+            for line in text.splitlines():
+                parts = [p.strip() for p in line.replace("\t", ",").split(",") if p.strip()]
+                if len(parts) >= 2 and parts[0].isdigit() and parts[1].upper()[:1] in "ABCD":
+                    key[str(int(parts[0]))] = parts[1].upper()[:1]
+        if not key:
+            key = {str(i + 1): letter for i, letter in enumerate(letters)}
+    if not key:
+        raise HTTPException(400, "Could not read an answer key from that file")
+    exam.answer_key_json = json.dumps(key)
+    db.commit()
+    return _exam_out(_load_exam(db, exam.id))
 
 
 @router.put("/{exam_id}/answer-key", response_model=ExamOut)

@@ -5,6 +5,7 @@ import Subjects from "./pages/Subjects";
 import Layouts from "./pages/Layouts";
 import Exams from "./pages/Exams";
 import ExamDetail from "./pages/ExamDetail";
+import Evaluation from "./pages/Evaluation";
 import Results from "./pages/Results";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
         <NavLink to="/subjects">Subjects</NavLink>
         <NavLink to="/layouts">OMR layouts</NavLink>
         <NavLink to="/exams">Exams</NavLink>
+        <NavLink to="/evaluation">Evaluation</NavLink>
       </nav>
       <main className="main">
         <Routes>
@@ -28,6 +30,7 @@ export default function App() {
           <Route path="/exams" element={<Exams />} />
           <Route path="/exams/:id" element={<ExamDetail />} />
           <Route path="/exams/:id/results" element={<Results />} />
+          <Route path="/evaluation" element={<Evaluation />} />
         </Routes>
       </main>
     </div>

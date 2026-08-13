@@ -85,6 +85,7 @@ class ExamOut(BaseModel):
     answer_key: dict[str, str] = {}
     sheet_count: int = 0
     evaluated_count: int = 0
+    has_sample: bool = False
 
     model_config = {"from_attributes": True}
 

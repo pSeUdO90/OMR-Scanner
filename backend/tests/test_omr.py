@@ -70,6 +70,31 @@ def test_student_import_and_exam_flow(tmp_path):
     )
     assert exam.status_code == 200, exam.text
     exam_id = exam.json()["id"]
+    edited = client.put(
+        f"/api/exams/{exam_id}",
+        json={
+            "name": "NEET Mock 1 (edited)",
+            "exam_date": "2026-08-13",
+            "exam_type": "NEET Mock",
+            "duration_minutes": 200,
+            "correct_marks": 4,
+            "wrong_marks": -1,
+            "unattempted_marks": 0,
+            "layout_id": gyana["id"],
+            "subject_maps": [
+                {"subject_id": subjects["Physics"], "start_q": 1, "end_q": 45},
+                {"subject_id": subjects["Chemistry"], "start_q": 46, "end_q": 90},
+                {"subject_id": subjects["Biology"], "start_q": 91, "end_q": 180},
+            ],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["duration_minutes"] == 200
+    key_upload = client.post(
+        f"/api/exams/{exam_id}/answer-key/upload",
+        files={"file": ("key.txt", b"ABCD" * 45, "text/plain")},
+    )
+    assert key_upload.status_code == 200, key_upload.text
     sample = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "2400100001"})
     assert sample.status_code == 200, sample.text
     evaluated = client.post(f"/api/exams/{exam_id}/evaluate")
