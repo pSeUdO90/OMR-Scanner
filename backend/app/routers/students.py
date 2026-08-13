@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -14,6 +14,23 @@ router = APIRouter(prefix="/api/students", tags=["students"])
 @router.get("", response_model=list[StudentOut])
 def list_students(db: Session = Depends(get_db)):
     return db.query(Student).order_by(Student.roll_no).all()
+
+
+@router.get("/options")
+def student_field_options(db: Session = Depends(get_db)):
+    rows = db.query(Student).all()
+    return {
+        "classes": sorted({s.class_name for s in rows if s.class_name}),
+        "sections": sorted({s.section for s in rows if s.section}),
+        "batches": sorted({s.session for s in rows if s.session}),
+        "by_class": {
+            cls: {
+                "sections": sorted({s.section for s in rows if s.class_name == cls and s.section}),
+                "batches": sorted({s.session for s in rows if s.class_name == cls and s.session}),
+            }
+            for cls in sorted({s.class_name for s in rows if s.class_name})
+        },
+    }
 
 
 @router.post("", response_model=StudentOut)
@@ -59,17 +76,44 @@ def download_template():
     )
 
 
-@router.post("/import")
-def import_students(file: UploadFile = File(...), db: Session = Depends(get_db)):
+@router.post("/import/preview")
+def preview_student_import(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = file.file.read()
     try:
         rows = parse_students_xlsx(content)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    created = updated = 0
+    existing = []
+    new = []
+    for row in rows:
+        found = db.query(Student).filter(Student.roll_no == row["roll_no"]).one_or_none()
+        if found:
+            existing.append({**row, "id": found.id, "current_name": found.name})
+        else:
+            new.append(row)
+    return {"new": new, "existing": existing, "total": len(rows)}
+
+
+@router.post("/import")
+def import_students(
+    file: UploadFile = File(...),
+    on_conflict: str = Query("update"),
+    db: Session = Depends(get_db),
+):
+    content = file.file.read()
+    try:
+        rows = parse_students_xlsx(content)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if on_conflict not in ("update", "skip"):
+        raise HTTPException(400, "on_conflict must be update or skip")
+    created = updated = skipped = 0
     for row in rows:
         existing = db.query(Student).filter(Student.roll_no == row["roll_no"]).one_or_none()
         if existing:
+            if on_conflict == "skip":
+                skipped += 1
+                continue
             for key, value in row.items():
                 setattr(existing, key, value)
             updated += 1
@@ -77,7 +121,7 @@ def import_students(file: UploadFile = File(...), db: Session = Depends(get_db))
             db.add(Student(**row))
             created += 1
     db.commit()
-    return {"created": created, "updated": updated, "total": created + updated}
+    return {"created": created, "updated": updated, "skipped": skipped, "total": created + updated + skipped}
 
 
 @router.get("/{student_id}", response_model=StudentOut)

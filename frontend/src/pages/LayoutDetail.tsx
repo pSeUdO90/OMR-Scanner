@@ -1,13 +1,17 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, Layout } from "../api";
+import { api, Layout, Subject } from "../api";
+import { EditButton, ViewButton } from "../components/ActionButtons";
 import FieldMapper from "../components/FieldMapper";
+import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
+import PageTitle from "../components/PageTitle";
 
 export default function LayoutDetail() {
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") || "view";
   const [layout, setLayout] = useState<Layout | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -18,10 +22,15 @@ export default function LayoutDetail() {
     columns: 4,
     options: "ABCD",
   });
+  const [maps, setMaps] = useState<SubjectMapRow[]>([]);
 
   const load = async () => {
-    const row = await api.get(`/api/layouts/${id}`);
+    const [row, subjectRows] = await Promise.all([
+      api.get(`/api/layouts/${id}`),
+      api.get("/api/subjects"),
+    ]);
     setLayout(row);
+    setSubjects(subjectRows);
     setForm({
       name: row.name,
       description: row.description,
@@ -29,6 +38,15 @@ export default function LayoutDetail() {
       columns: 4,
       options: row.options,
     });
+    const byName = Object.fromEntries(subjectRows.map((s: Subject) => [s.name, s.id]));
+    setMaps(
+      (row.preview?.default_maps || []).map((m: { subject: string; start_q: number; end_q: number }) => ({
+        subject_id: byName[m.subject],
+        subject: m.subject,
+        start_q: m.start_q,
+        end_q: m.end_q,
+      }))
+    );
   };
   useEffect(() => { load(); }, [id]);
 
@@ -43,6 +61,11 @@ export default function LayoutDetail() {
     data.append("total_questions", String(form.total_questions));
     data.append("columns", String(form.columns));
     data.append("options", form.options);
+    data.append("subject_maps", JSON.stringify(maps.map((m) => ({
+      subject: subjects.find((s) => s.id === m.subject_id)?.name || m.subject,
+      start_q: m.start_q,
+      end_q: m.end_q,
+    }))));
     const file = fileRef.current?.files?.[0];
     if (file) data.append("sample", file);
     try {
@@ -57,24 +80,30 @@ export default function LayoutDetail() {
   return (
     <>
       <p className="muted"><Link to="/layouts">← OMR layouts</Link></p>
-      <h2>{layout.name}</h2>
+      <PageTitle icon="layouts">{layout.name}</PageTitle>
       <div className="tabs">
-        <button type="button" className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</button>
-        <button type="button" className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</button>
+        <ViewButton className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</ViewButton>
+        <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
       </div>
       {tab === "view" && (
         <>
           <div className="card">
-            <p className="muted">{layout.description}</p>
-            <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
-            <ul>
-              {(layout.preview?.default_maps || []).map((m) => (
-                <li key={m.subject}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>
-              ))}
-            </ul>
-            {layout.has_sample && (
-              <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
-            )}
+            <div className="layout-view">
+              <div>
+                <p className="muted">{layout.description}</p>
+                <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
+                <ul>
+                  {(layout.preview?.default_maps || []).map((m) => (
+                    <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>
+                  ))}
+                </ul>
+              </div>
+              {layout.has_sample ? (
+                <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
+              ) : (
+                <p className="muted">No sample image on file.</p>
+              )}
+            </div>
           </div>
           <div className="card">
             <FieldMapper
@@ -97,6 +126,7 @@ export default function LayoutDetail() {
             <label>Options<input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} disabled={layout.is_builtin} /></label>
           </div>
           <label>Description<input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+          <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} />
           <p className="muted">Replace the sample OMR (PDF or JPG) if needed.</p>
           <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/*" />
           <p><button type="submit">Save layout</button></p>

@@ -3,24 +3,37 @@ from __future__ import annotations
 import csv
 import json
 import shutil
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import UPLOAD_DIR, get_db
-from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Subject
+from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Student, Subject
 from ..omr.analyze import analyze_layout_config
-from ..omr.generator import generate_sheet
+from ..omr.generator import generate_sheet, prefill_on_layout_sample
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import AnswerKeyIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
-from ..scoring import apply_grace_to_sheet, build_analytics, score_sheet
+from ..scoring import assigned_students, bind_sheet_student, build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
+
+
+def allocate_test_id(db: Session) -> str:
+    values = [row[0] for row in db.query(Exam.test_id).all() if row[0]]
+    highest = 0
+    for value in values:
+        digits = "".join(ch for ch in str(value) if ch.isdigit())
+        if digits:
+            highest = max(highest, int(digits))
+    return f"{highest + 1:04d}"
 
 
 def _exam_out(exam: Exam, *, with_analysis: bool = False) -> ExamOut:
@@ -57,7 +70,10 @@ def _exam_out(exam: Exam, *, with_analysis: bool = False) -> ExamOut:
         has_sample=bool(getattr(exam, "sample_path", "")),
         test_id=getattr(exam, "test_id", "") or "",
         test_no=getattr(exam, "test_no", "") or "",
-        grace_marks=getattr(exam, "grace_marks", 0) or 0,
+        class_name=getattr(exam, "class_name", "") or "",
+        section=getattr(exam, "section", "") or "",
+        batch=getattr(exam, "batch", "") or "",
+        grace_questions=json.loads(getattr(exam, "grace_questions_json", None) or "[]"),
         field_map=json.loads(getattr(exam, "field_map_json", None) or "{}")
         or json.loads(getattr(exam.layout, "field_map_json", None) or "{}"),
         analysis=_exam_analysis(exam) if with_analysis else [],
@@ -100,6 +116,11 @@ def list_exams(db: Session = Depends(get_db)):
     return [_exam_out(exam) for exam in exams]
 
 
+@router.get("/next-test-id")
+def get_next_test_id(db: Session = Depends(get_db)):
+    return {"test_id": allocate_test_id(db)}
+
+
 @router.post("", response_model=ExamOut)
 def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
     layout = db.get(OmrLayout, payload.layout_id)
@@ -115,9 +136,11 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
         unattempted_marks=payload.unattempted_marks,
         layout_id=payload.layout_id,
         answer_key_json=json.dumps(payload.answer_key),
-        test_id=payload.test_id,
+        test_id=allocate_test_id(db),
         test_no=payload.test_no,
-        grace_marks=payload.grace_marks,
+        class_name=payload.class_name,
+        section=payload.section,
+        batch=payload.batch,
         status="draft",
     )
     db.add(exam)
@@ -166,6 +189,8 @@ def get_exam(exam_id: int, db: Session = Depends(get_db)):
 @router.put("/{exam_id}", response_model=ExamOut)
 def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
+    if exam.status in ("evaluated", "published"):
+        raise HTTPException(409, "Exam already evaluated. Only the answer key can be changed.")
     layout = db.get(OmrLayout, payload.layout_id)
     if not layout:
         raise HTTPException(400, "Layout not found")
@@ -177,12 +202,11 @@ def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
     exam.wrong_marks = payload.wrong_marks
     exam.unattempted_marks = payload.unattempted_marks
     exam.layout_id = payload.layout_id
-    exam.test_id = payload.test_id
     exam.test_no = payload.test_no
-    exam.grace_marks = payload.grace_marks
+    exam.class_name = payload.class_name
+    exam.section = payload.section
+    exam.batch = payload.batch
     _replace_subject_maps(db, exam, payload.subject_maps, layout)
-    for sheet in exam.sheets:
-        apply_grace_to_sheet(exam, sheet)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
 
@@ -190,9 +214,8 @@ def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
 @router.put("/{exam_id}/grace", response_model=ExamOut)
 def set_grace_marks(exam_id: int, payload: GraceIn, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
-    exam.grace_marks = payload.grace_marks
-    for sheet in exam.sheets:
-        apply_grace_to_sheet(exam, sheet)
+    exam.grace_questions_json = json.dumps(parse_question_numbers(payload.questions))
+    rescore_stored_sheets(db, exam)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
 
@@ -323,6 +346,14 @@ async def upload_sheets(exam_id: int, files: list[UploadFile] = File(...), db: S
         db.add(sheet)
         db.commit()
         db.refresh(sheet)
+        try:
+            layout = parse_layout(exam.layout.config_json)
+            result = evaluate_image(load_image(stored), layout)
+            bind_sheet_student(db, exam, sheet, result["roll"])
+            db.commit()
+            db.refresh(sheet)
+        except Exception:
+            pass
         saved.append(_sheet_out(sheet))
     return saved
 
@@ -439,6 +470,76 @@ def exam_results_csv(exam_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{exam_id}/results.xlsx")
+def exam_results_xlsx(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    analytics = build_analytics(exam)
+    wb = Workbook()
+    ranks = wb.active
+    ranks.title = "Rank list"
+    subject_names = [s["subject_name"] for s in analytics["subjects"]]
+    headers = ["Rank", "Roll No", "Name", "Class", "Section", "Right", "Wrong", "Left", "Invalid", "Score", "Max", "Percentage"]
+    headers += [f"{name} R" for name in subject_names]
+    headers += [f"{name} W" for name in subject_names]
+    headers += [f"{name} L" for name in subject_names]
+    ranks.append(headers)
+    for cell in ranks[1]:
+        cell.font = Font(bold=True)
+    for row in analytics["results"]:
+        by_subject = {s["subject_name"]: s for s in row["subjects"]}
+        ranks.append(
+            [
+                row["rank"],
+                row["roll_no"],
+                row["name"],
+                row["class_name"],
+                row["section"],
+                row["right"],
+                row["wrong"],
+                row["left"],
+                row["invalid"],
+                row["score"],
+                row["max_score"],
+                row["percentage"],
+            ]
+            + [by_subject.get(name, {}).get("right", "") for name in subject_names]
+            + [by_subject.get(name, {}).get("wrong", "") for name in subject_names]
+            + [by_subject.get(name, {}).get("left", "") for name in subject_names]
+        )
+
+    overall = wb.create_sheet("Overall RWL")
+    overall.append(["Exam", analytics["exam_name"]])
+    overall.append(["Appeared", analytics["appeared"]])
+    overall.append(["Average", analytics["average_score"]])
+    overall.append(["Highest", analytics["highest_score"]])
+    overall.append(["Lowest", analytics["lowest_score"]])
+    overall.append([])
+    overall.append(["Subject", "Right", "Wrong", "Left", "Invalid", "Accuracy", "Score", "Max"])
+    for cell in overall[7]:
+        cell.font = Font(bold=True)
+    rwl_rows = [analytics["overall_rwl"], *analytics["subjects"]]
+    for item in rwl_rows:
+        overall.append(
+            [item["subject_name"], item["right"], item["wrong"], item["left"], item["invalid"], item["accuracy"], item["score"], item["max_score"]]
+        )
+
+    items = wb.create_sheet("Item analysis")
+    items.append(["Question", "Key", "Right", "Wrong", "Left", "Invalid", "Difficulty"])
+    for cell in items[1]:
+        cell.font = Font(bold=True)
+    for item in analytics["item_analysis"]:
+        items.append([item["question_no"], item["correct"], item["right"], item["wrong"], item["left"], item["invalid"], item["difficulty"]])
+
+    buf = BytesIO()
+    wb.save(buf)
+    filename = f"{exam.name.replace(' ', '_')}_rwl.xlsx"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/{exam_id}/sheets/{sheet_id}/overlay")
 def sheet_overlay(exam_id: int, sheet_id: int, db: Session = Depends(get_db)):
     sheet = db.get(ExamSheet, sheet_id)
@@ -463,7 +564,13 @@ def make_sample_sheet(
         parsed = {i + 1: letter for i, letter in enumerate(letters)}
     elif key:
         parsed = {int(k): v for k, v in key.items()}
-    image = generate_sheet(layout, roll, parsed)
+    image = generate_sheet(
+        layout,
+        roll,
+        parsed,
+        test_id=exam.test_id or "",
+        test_no=exam.test_no or "",
+    )
     dest = UPLOAD_DIR / f"exam-{exam.id}" / f"sample-{uuid4().hex}.png"
     save_image(dest, image)
     sheet = ExamSheet(exam_id=exam.id, filename=dest.name, stored_path=str(dest), status="uploaded")
@@ -471,3 +578,38 @@ def make_sample_sheet(
     db.commit()
     db.refresh(sheet)
     return _sheet_out(sheet)
+
+
+@router.get("/{exam_id}/prefilled-omr")
+def prefilled_omr_pdf(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    students = assigned_students(db, exam)
+    if not students:
+        raise HTTPException(400, "No students assigned to this exam. Set class, section, and batch from the student list.")
+    layout = parse_layout(exam.layout.config_json)
+    sample_path = getattr(exam.layout, "sample_path", "") or ""
+    if not sample_path or not Path(sample_path).exists():
+        raise HTTPException(400, "Upload an OMR layout sample PDF/JPG before generating pre-filled sheets.")
+    base = load_image(sample_path)
+    pages = []
+    exam_date = str(exam.exam_date)
+    for student in students:
+        image = prefill_on_layout_sample(
+            base,
+            layout,
+            roll=student.roll_no,
+            student_name=student.name,
+            test_id=exam.test_id or "",
+            test_no=exam.test_no or "",
+            exam_date=exam_date,
+        )
+        rgb = image[:, :, ::-1]
+        pages.append(Image.fromarray(rgb))
+    buf = BytesIO()
+    pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:], resolution=120)
+    filename = f"{exam.name.replace(' ', '_')}_prefilled_omr.pdf"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

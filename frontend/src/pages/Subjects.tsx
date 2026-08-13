@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, Subject } from "../api";
+import { DeleteButton } from "../components/ActionButtons";
+import PageTitle from "../components/PageTitle";
 
 export default function Subjects() {
   const [rows, setRows] = useState<Subject[]>([]);
@@ -18,8 +20,9 @@ export default function Subjects() {
   };
   return (
     <>
-      <h2>Subjects</h2>
-      <p className="muted">Map each subject to a question range when you create an exam. A subject used by an exam cannot be deleted.</p>
+      <PageTitle icon="subjects" subtitle="Map each subject to a question range when you create an exam. A subject used by an exam cannot be deleted.">
+        Subjects
+      </PageTitle>
       <form className="card row" onSubmit={onSubmit}>
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} required /></label>
         <label>Code<input value={code} onChange={(e) => setCode(e.target.value)} /></label>
@@ -35,9 +38,7 @@ export default function Subjects() {
                 <td>{s.name}</td>
                 <td>{s.code}</td>
                 <td>
-                  <button
-                    type="button"
-                    className="danger"
+                  <DeleteButton
                     onClick={async () => {
                       setErr("");
                       try {
@@ -49,7 +50,7 @@ export default function Subjects() {
                     }}
                   >
                     Delete
-                  </button>
+                  </DeleteButton>
                 </td>
               </tr>
             ))}

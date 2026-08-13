@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, Student } from "../api";
+import { DeleteButton, ViewLink } from "../components/ActionButtons";
+import PageTitle from "../components/PageTitle";
 
 const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
 const labels: Record<string, string> = {
@@ -19,6 +20,8 @@ export default function Students() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const pendingFile = useRef<File | null>(null);
+  const [conflict, setConflict] = useState<{ existing: { roll_no: string; name: string; current_name: string }[]; newCount: number } | null>(null);
   const load = () => api.get("/api/students").then(setRows);
   useEffect(() => { load(); }, []);
 
@@ -45,14 +48,27 @@ export default function Students() {
     }
   };
 
+  const finishImport = async (file: File, onConflict: "update" | "skip") => {
+    const data = new FormData();
+    data.append("file", file);
+    const res = await api.post(`/api/students/import?on_conflict=${onConflict}`, data);
+    const skipped = res.skipped ? `, ${res.skipped} ignored` : "";
+    setMsg(`Imported ${res.created + res.updated} rows (${res.created} new, ${res.updated} rewritten${skipped}).`);
+    load();
+  };
+
   const onUpload = async (file: File) => {
     setErr("");
     const data = new FormData();
     data.append("file", file);
     try {
-      const res = await api.post("/api/students/import", data);
-      setMsg(`Imported ${res.total} rows (${res.created} new, ${res.updated} updated).`);
-      load();
+      const preview = await api.post("/api/students/import/preview", data);
+      if ((preview.existing || []).length) {
+        pendingFile.current = file;
+        setConflict({ existing: preview.existing, newCount: (preview.new || []).length });
+        return;
+      }
+      await finishImport(file, "update");
     } catch (error) {
       setErr(error instanceof Error ? error.message : "XLSX import failed");
     }
@@ -60,8 +76,9 @@ export default function Students() {
 
   return (
     <>
-      <h2>Student list</h2>
-      <p className="muted">Roll no, Student Name, Gender, Class, Section, Session. Use the upload button for an XLSX sheet.</p>
+      <PageTitle icon="students" subtitle="Roll no, Student Name, Gender, Class, Section, Session. Use the upload button for an XLSX sheet.">
+        Student list
+      </PageTitle>
       <div className="card">
         <div className="row">
           <a className="btn" href="/api/students/template.xlsx">Download XLSX template</a>
@@ -116,10 +133,9 @@ export default function Students() {
             {filtered.map((s) => (
               <tr key={s.id}>
                 <td>{s.roll_no}</td><td>{s.name}</td><td>{s.gender}</td><td>{s.class_name}</td><td>{s.section}</td><td>{s.session}</td>
-                <td>
-                  <Link to={`/students/${s.id}`}>View</Link>
-                  {" · "}
-                  <button type="button" className="ghost" onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</button>
+                <td className="row-actions">
+                  <ViewLink to={`/students/${s.id}`}>View</ViewLink>
+                  <DeleteButton onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</DeleteButton>
                 </td>
               </tr>
             ))}
@@ -127,6 +143,64 @@ export default function Students() {
         </table>
         {filtered.length === 0 && <p className="muted">No students match that search.</p>}
       </div>
+      {conflict && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Existing students found</h3>
+            <p className="muted">
+              {conflict.existing.length} roll number(s) already exist
+              {conflict.newCount ? ` · ${conflict.newCount} new row(s) will still be added` : ""}.
+              Rewrite those records or ignore them?
+            </p>
+            <table>
+              <thead><tr><th>Roll no</th><th>Current name</th><th>Incoming name</th></tr></thead>
+              <tbody>
+                {conflict.existing.map((row) => (
+                  <tr key={row.roll_no}>
+                    <td>{row.roll_no}</td>
+                    <td>{row.current_name}</td>
+                    <td>{row.name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="row-actions">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!pendingFile.current) return;
+                  try {
+                    await finishImport(pendingFile.current, "update");
+                    setConflict(null);
+                  } catch (error) {
+                    setErr(error instanceof Error ? error.message : "XLSX import failed");
+                    setConflict(null);
+                  }
+                }}
+              >
+                Rewrite
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={async () => {
+                  if (!pendingFile.current) return;
+                  try {
+                    await finishImport(pendingFile.current, "skip");
+                    setConflict(null);
+                  } catch (error) {
+                    setErr(error instanceof Error ? error.message : "XLSX import failed");
+                    setConflict(null);
+                  }
+                }}
+              >
+                Ignore
+              </button>
+              <button type="button" className="ghost" onClick={() => setConflict(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

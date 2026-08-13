@@ -8,6 +8,76 @@ from sqlalchemy.orm import Session
 from .models import Exam, ExamSheet, SheetQuestionResult, Student
 
 
+def parse_question_numbers(value) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        nums = []
+        for item in value:
+            try:
+                nums.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return sorted(set(n for n in nums if n > 0))
+    text = str(value).replace(";", ",")
+    nums: set[int] = set()
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            left, right = part.split("-", 1)
+            if left.strip().isdigit() and right.strip().isdigit():
+                lo, hi = int(left), int(right)
+                nums.update(range(min(lo, hi), max(lo, hi) + 1))
+        elif part.isdigit():
+            nums.add(int(part))
+    return sorted(n for n in nums if n > 0)
+
+
+def grace_questions(exam: Exam) -> set[int]:
+    return set(parse_question_numbers(json.loads(getattr(exam, "grace_questions_json", None) or "[]")))
+
+
+def parse_csv_values(value: str | None) -> list[str]:
+    return [part.strip() for part in (value or "").replace(";", ",").split(",") if part.strip()]
+
+
+def assigned_students(db: Session, exam: Exam) -> list[Student]:
+    query = db.query(Student)
+    if exam.class_name:
+        query = query.filter(Student.class_name == exam.class_name)
+    sections = parse_csv_values(exam.section)
+    if sections:
+        query = query.filter(Student.section.in_(sections))
+    if exam.batch:
+        query = query.filter(Student.session == exam.batch)
+    return query.order_by(Student.roll_no).all()
+
+
+def bind_sheet_student(db: Session, exam: Exam, sheet: ExamSheet, detected_roll: str, *, scored: bool = False) -> bool:
+    roll = (detected_roll or "").strip()
+    sheet.detected_roll = roll
+    student = db.query(Student).filter(Student.roll_no == roll).one_or_none() if roll else None
+    assigned_ids = {row.id for row in assigned_students(db, exam)}
+    if student and student.id in assigned_ids:
+        sheet.student_id = student.id
+        if scored:
+            sheet.status = "evaluated"
+            sheet.error_message = ""
+        return True
+    sheet.student_id = student.id if student else None
+    if roll:
+        sheet.status = "unmatched"
+        sheet.error_message = (
+            "Student is not assigned to this exam" if student else "Roll number not found in student list"
+        )
+    elif scored:
+        sheet.status = "unmatched"
+        sheet.error_message = "Roll number not found in student list"
+    return False
+
+
 def subject_for_question(exam: Exam, question_no: int):
     for mapping in exam.subject_maps:
         if mapping.start_q <= question_no <= mapping.end_q:
@@ -17,10 +87,7 @@ def subject_for_question(exam: Exam, question_no: int):
 
 def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, str], detected_roll: str) -> None:
     key = json.loads(exam.answer_key_json or "{}")
-    sheet.detected_roll = detected_roll
     sheet.answers_json = json.dumps(answers)
-    student = db.query(Student).filter(Student.roll_no == detected_roll).one_or_none()
-    sheet.student_id = student.id if student else None
 
     db.query(SheetQuestionResult).filter(SheetQuestionResult.sheet_id == sheet.id).delete()
     right = wrong = left = invalid = 0
@@ -32,7 +99,11 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
         marked = (answers.get(str(q)) or "").strip().upper()
         correct = (key.get(str(q)) or "").strip().upper()
         mapping = subject_for_question(exam, q)
-        if marked in ("", None):
+        if q in grace_questions(exam):
+            rwl = "R"
+            right += 1
+            score += exam.correct_marks
+        elif marked in ("", None):
             rwl = "L"
             left += 1
             score += exam.unattempted_marks
@@ -65,22 +136,17 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
     sheet.wrong_count = wrong
     sheet.left_count = left
     sheet.invalid_count = invalid
-    sheet.raw_score = round(score + (getattr(exam, "grace_marks", 0) or 0), 2)
+    sheet.raw_score = round(score, 2)
     sheet.max_score = round(max_score, 2)
-    sheet.status = "evaluated" if student else "unmatched"
-    sheet.error_message = "" if student else "Roll number not found in student list"
+    bind_sheet_student(db, exam, sheet, detected_roll, scored=True)
 
 
-def apply_grace_to_sheet(exam: Exam, sheet: ExamSheet) -> None:
-    if sheet.status not in ("evaluated", "unmatched"):
-        return
-    base = (
-        sheet.right_count * exam.correct_marks
-        + sheet.wrong_count * exam.wrong_marks
-        + sheet.left_count * exam.unattempted_marks
-        + sheet.invalid_count * exam.wrong_marks
-    )
-    sheet.raw_score = round(base + (getattr(exam, "grace_marks", 0) or 0), 2)
+def rescore_stored_sheets(db: Session, exam: Exam) -> None:
+    for sheet in exam.sheets:
+        if sheet.status not in ("evaluated", "unmatched"):
+            continue
+        answers = json.loads(sheet.answers_json or "{}")
+        score_sheet(db, exam, sheet, answers, sheet.detected_roll)
 
 
 def rwl_bucket(rows: list[SheetQuestionResult], exam: Exam, name: str, subject_id, start_q: int, end_q: int) -> dict:

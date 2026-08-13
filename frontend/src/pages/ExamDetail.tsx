@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, Exam, Layout, Subject } from "../api";
+import { api, Exam, Layout, Student, Subject } from "../api";
+import { DeleteButton, EditButton } from "../components/ActionButtons";
 import ExamForm, { ExamFormState, examToForm } from "../components/ExamForm";
 import EvaluationPanel from "../components/EvaluationPanel";
-import FieldMapper from "../components/FieldMapper";
+import PageTitle from "../components/PageTitle";
 
 type Sheet = {
   id: number;
@@ -29,24 +30,27 @@ export default function ExamDetail() {
   const [keyString, setKeyString] = useState("");
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [form, setForm] = useState<ExamFormState | null>(null);
-  const [maps, setMaps] = useState<{ subject_id: number; start_q: number; end_q: number }[]>([]);
+  const [maps, setMaps] = useState<{ subject_id?: number; subject?: string; start_q: number; end_q: number }[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const sampleRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
-    const [e, layoutRows, subjectRows] = await Promise.all([
+    const [e, layoutRows, subjectRows, studentRows] = await Promise.all([
       api.get(`/api/exams/${id}`),
       api.get("/api/layouts"),
       api.get("/api/subjects"),
+      api.get("/api/students"),
     ]);
     setExam(e);
     setLayouts(layoutRows);
     setSubjects(subjectRows);
+    setStudents(studentRows);
     setForm(examToForm(e));
     setMaps(e.subject_maps.map((m: Exam["subject_maps"][number]) => ({
       subject_id: m.subject_id,
+      subject: m.subject_name,
       start_q: m.start_q,
       end_q: m.end_q,
     })));
@@ -66,12 +70,16 @@ export default function ExamDetail() {
   };
 
   if (!exam || !form) return <p>Loading…</p>;
+  const locked = exam.status === "evaluated" || exam.status === "published";
 
   const onEdit = async (e: FormEvent) => {
     e.preventDefault();
     setErr("");
     try {
-      await api.put(`/api/exams/${id}`, { ...form, subject_maps: maps, answer_key: exam.answer_key });
+      const updated = await api.put(`/api/exams/${id}`, { ...form, subject_maps: maps, answer_key: exam.answer_key });
+      if (updated.id !== exam.id) {
+        throw new Error("Save did not update this exam");
+      }
       setMsg("Exam updated.");
       load();
     } catch (error) {
@@ -81,21 +89,22 @@ export default function ExamDetail() {
 
   return (
     <>
-      <h2>{exam.name}</h2>
+      <PageTitle icon="exams">{exam.name}</PageTitle>
       <p className="muted">
         {exam.exam_type} · {exam.exam_date}
+        {exam.class_name ? ` · Class ${exam.class_name}` : ""}
+        {exam.section ? `-${exam.section}` : ""}
+        {exam.batch ? ` · Batch ${exam.batch}` : ""}
         {exam.test_id ? ` · Test ID ${exam.test_id}` : ""}
         {exam.test_no ? ` · Test No ${exam.test_no}` : ""}
         {" · "}{exam.duration_minutes} min · marking +{exam.correct_marks}/{exam.wrong_marks}/{exam.unattempted_marks} · layout {exam.layout_name}
       </p>
       <div className="tabs">
         <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>Overview</button>
-        <button type="button" className={tab === "edit" ? "active" : ""} onClick={() => setTab("edit")}>Edit exam</button>
+        <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setTab("edit")}>Edit</EditButton>
         <button type="button" className={tab === "evaluation" ? "active" : ""} onClick={() => setTab("evaluation")}>Evaluation</button>
         <Link className={tab === "results" ? "btn active" : "btn"} to={`/exams/${id}/results`}>Results</Link>
-        <button
-          type="button"
-          className="ghost"
+        <DeleteButton
           onClick={async () => {
             if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
             try {
@@ -106,71 +115,37 @@ export default function ExamDetail() {
             }
           }}
         >
-          Delete exam
-        </button>
+          Delete
+        </DeleteButton>
       </div>
 
       {tab === "overview" && (
-        <>
-          <div className="card">
-            <h3>Question mapping</h3>
-            {exam.subject_maps.map((m) => (
-              <p key={m.id}>{m.subject_name}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</p>
-            ))}
-          </div>
-          <div className="card">
-            <h3>Upload OMR sample</h3>
-            <p className="muted">Upload a PDF or JPG of the sheet. Detected fields can be mapped to Exam Date, Test ID, and Test No.</p>
-            <input
-              ref={sampleRef}
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/*"
-              hidden
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const data = new FormData();
-                data.append("file", file);
-                await api.post(`/api/exams/${id}/sample`, data);
-                setMsg("OMR sample uploaded and analyzed.");
-                load();
-              }}
-            />
-            <button type="button" onClick={() => sampleRef.current?.click()}>Upload OMR sample</button>
-            {exam.has_sample && (
-              <p>
-                <img className="sample-preview" src={`/api/exams/${id}/sample?t=${exam.sheet_count}`} alt="Uploaded OMR sample" />
-              </p>
-            )}
-            {msg && <p>{msg}</p>}
-            {(exam.analysis || []).length > 0 && (
-              <FieldMapper
-                analysis={exam.analysis || []}
-                fieldMap={exam.field_map || {}}
-                onSave={async (next) => {
-                  await api.post(`/api/exams/${id}/field-map`, { field_map: next });
-                  load();
-                }}
-              />
-            )}
-          </div>
-        </>
+        <div className="card">
+          <h3>Question mapping</h3>
+          {exam.subject_maps.map((m) => (
+            <p key={m.id}>{m.subject_name}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</p>
+          ))}
+        </div>
       )}
 
       {tab === "edit" && (
         <>
+          <h3>Edit this exam</h3>
+          <p className="muted">Changes are saved on this exam. A new exam is not created.</p>
           {msg && <p>{msg}</p>}
           <ExamForm
-          form={form}
-          setForm={setForm}
-          maps={maps}
-          setMaps={setMaps}
-          layouts={layouts}
-          subjects={subjects}
-          submitLabel="Save exam"
-          onSubmit={onEdit}
-          err={err}
-        />
+            form={form}
+            setForm={setForm}
+            maps={maps}
+            setMaps={setMaps}
+            layouts={layouts}
+            subjects={subjects}
+            students={students}
+            submitLabel="Save changes"
+            onSubmit={onEdit}
+            err={err}
+            locked={locked}
+          />
         </>
       )}
 

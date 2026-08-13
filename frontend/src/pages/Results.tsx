@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
+import PageTitle from "../components/PageTitle";
 
 type Rwl = {
   subject_name: string;
@@ -63,8 +64,9 @@ export default function Results() {
   if (!data) return <p>Loading…</p>;
   return (
     <>
-      <h2>RWL analysis — {data.exam_name}</h2>
-      <p className="muted">Right, Wrong, Left (unattempted). Invalid means more than one bubble was filled.</p>
+      <PageTitle icon="results" subtitle="Right, Wrong, Left (unattempted). Invalid means more than one bubble was filled.">
+        RWL analysis — {data.exam_name}
+      </PageTitle>
       <div className="grid">
         <div className="card"><div className="muted">Appeared</div><div className="stat">{data.appeared}</div></div>
         <div className="card"><div className="muted">Average</div><div className="stat">{data.average_score}</div></div>
@@ -101,6 +103,7 @@ export default function Results() {
             setErr(error instanceof Error ? error.message : "Publish failed");
           }
         }}>Publish results</button>{" "}
+        <a className="btn" href={`/api/exams/${id}/results.xlsx`}>Export RWL Excel</a>{" "}
         <a className="btn" href={`/api/exams/${id}/results.csv`}>Download RWL CSV</a>
         {data.published && <span className="pill R"> Published</span>}
         {msg && <p>{msg}</p>}

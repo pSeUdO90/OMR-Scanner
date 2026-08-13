@@ -85,7 +85,10 @@ export type Exam = {
   has_sample?: boolean;
   test_id?: string;
   test_no?: string;
-  grace_marks?: number;
+  class_name?: string;
+  section?: string;
+  batch?: string;
+  grace_questions?: number[];
   field_map?: Record<string, string>;
   analysis?: AnalysisField[];
 };
