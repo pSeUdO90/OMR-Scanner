@@ -18,6 +18,8 @@ export default function Exams() {
     wrong_marks: -1,
     unattempted_marks: 0,
     layout_id: 0,
+    test_id: "",
+    test_no: "",
   });
 
   useEffect(() => {
@@ -72,13 +74,15 @@ export default function Exams() {
       <div className="card">
         <h3>All exams</h3>
         <table>
-          <thead><tr><th>Exam Name</th><th>Date</th><th>Type</th><th>Layout</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Exam Name</th><th>Date</th><th>Type</th><th>Test ID</th><th>Test No</th><th>Layout</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {exams.map((exam) => (
               <tr key={exam.id}>
                 <td><Link to={`/exams/${exam.id}`}>{exam.name}</Link></td>
                 <td>{exam.exam_date}</td>
                 <td>{exam.exam_type}</td>
+                <td>{exam.test_id || "—"}</td>
+                <td>{exam.test_no || "—"}</td>
                 <td>{exam.layout_name}</td>
                 <td>{exam.status}</td>
                 <td>

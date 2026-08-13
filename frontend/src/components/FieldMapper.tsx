@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { AnalysisField, FIELD_TARGETS } from "../api";
+
+export default function FieldMapper({
+  analysis,
+  fieldMap,
+  onSave,
+}: {
+  analysis: AnalysisField[];
+  fieldMap: Record<string, string>;
+  onSave: (next: Record<string, string>) => Promise<void>;
+}) {
+  const [map, setMap] = useState<Record<string, string>>({ ...fieldMap });
+  const [msg, setMsg] = useState("");
+  const mappable = analysis.filter((f) => f.mappable);
+  if (!analysis.length) return null;
+  return (
+    <div>
+      <h3>Detected OMR fields</h3>
+      <p className="muted">Map Date, Test ID, and Test No from the sheet to exam data.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Field on OMR</th>
+            <th>Detected</th>
+            <th>Read value</th>
+            <th>Map to exam</th>
+          </tr>
+        </thead>
+        <tbody>
+          {analysis.map((field) => (
+            <tr key={field.key}>
+              <td>{field.label}</td>
+              <td>{field.detected ? field.detail : "Not found"}</td>
+              <td>{field.value || "—"}</td>
+              <td>
+                {field.mappable ? (
+                  <select
+                    value={map[field.key] || ""}
+                    onChange={(e) => setMap({ ...map, [field.key]: e.target.value })}
+                  >
+                    {FIELD_TARGETS.map((t) => (
+                      <option key={t.value || "ignore"} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="muted">Fixed</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {mappable.length > 0 && (
+        <p>
+          <button
+            type="button"
+            onClick={async () => {
+              await onSave(map);
+              setMsg("Field mapping saved.");
+            }}
+          >
+            Save field mapping
+          </button>
+          {msg && <span className="muted"> {msg}</span>}
+        </p>
+      )}
+    </div>
+  );
+}

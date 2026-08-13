@@ -44,6 +44,17 @@ export default function Layouts() {
     }
   };
 
+  const onDelete = async (layout: Layout) => {
+    setErr("");
+    try {
+      await api.del(`/api/layouts/${layout.id}`);
+      setMsg(`Deleted ${layout.name}.`);
+      load();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Could not delete layout");
+    }
+  };
+
   return (
     <>
       <h2>OMR layouts</h2>
@@ -63,24 +74,25 @@ export default function Layouts() {
         {msg && <p>{msg}</p>}
         {err && <p className="error">{err}</p>}
       </form>
-      {rows.map((layout) => (
-        <div className="card" key={layout.id}>
-          <h3>{layout.name}</h3>
-          <p className="muted">{layout.description}</p>
-          <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
-          <ul>
-            {(layout.preview?.default_maps || []).map((m) => (
-              <li key={m.subject}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>
-            ))}
-          </ul>
-          {layout.has_sample && (
-            <p>
+      <div className="layout-grid">
+        {rows.map((layout) => (
+          <div className="card layout-card" key={layout.id}>
+            <h3>{layout.name}</h3>
+            <p className="muted">{layout.description}</p>
+            <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
+            {layout.has_sample ? (
               <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
-            </p>
-          )}
-          <Link to="/exams">Use this layout in a new exam →</Link>
-        </div>
-      ))}
+            ) : (
+              <p className="muted">No sample image on file.</p>
+            )}
+            <div className="actions">
+              <Link className="btn" to={`/layouts/${layout.id}`}>View</Link>
+              <Link className="btn" to={`/layouts/${layout.id}?tab=edit`}>Edit</Link>
+              <button type="button" className="ghost" onClick={() => onDelete(layout)}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   );
 }

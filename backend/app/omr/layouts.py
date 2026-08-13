@@ -53,6 +53,8 @@ def gyana_vikash_180() -> dict[str, Any]:
         "timing_marks": {"side_margin": 0.045, "min_count": 12},
         "roll": _digit_grid(10, (0.64, 0.095), 0.026, 0.0145, 0.005),
         "test_no": _digit_grid(3, (0.64, 0.265), 0.026, 0.0145, 0.005),
+        "test_id": _digit_grid(3, (0.74, 0.265), 0.026, 0.0145, 0.005),
+        "date": _digit_grid(6, (0.64, 0.355), 0.026, 0.012, 0.0048),
         "questions": questions,
         "default_maps": [
             {"subject": "Physics", "code": "PHY", "start_q": 1, "end_q": 45},
@@ -138,7 +140,10 @@ def custom_grid_layout(
         "options": options or "ABCD",
         "total_questions": total_questions,
         "timing_marks": {"side_margin": 0.045, "min_count": 12},
-        "roll": _digit_grid(10, (0.35, 0.05), 0.028, 0.012, 0.0048),
+        "roll": _digit_grid(10, (0.08, 0.05), 0.028, 0.012, 0.0048),
+        "test_id": _digit_grid(3, (0.50, 0.05), 0.026, 0.012, 0.0048),
+        "test_no": _digit_grid(3, (0.62, 0.05), 0.026, 0.012, 0.0048),
+        "date": _digit_grid(6, (0.76, 0.05), 0.022, 0.012, 0.0045),
         "questions": questions,
         "default_maps": [{"subject": "Paper", "code": "PAP", "start_q": 1, "end_q": total_questions}],
     }

@@ -20,6 +20,14 @@ def _ensure_columns() -> None:
         layout_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(omr_layouts)")).fetchall()}
         if layout_cols and "sample_path" not in layout_cols:
             conn.execute(text("ALTER TABLE omr_layouts ADD COLUMN sample_path VARCHAR(500) DEFAULT ''"))
+        if layout_cols and "field_map_json" not in layout_cols:
+            conn.execute(text("ALTER TABLE omr_layouts ADD COLUMN field_map_json TEXT DEFAULT '{}'"))
+        if cols and "test_id" not in cols:
+            conn.execute(text("ALTER TABLE exams ADD COLUMN test_id VARCHAR(40) DEFAULT ''"))
+        if cols and "test_no" not in cols:
+            conn.execute(text("ALTER TABLE exams ADD COLUMN test_no VARCHAR(40) DEFAULT ''"))
+        if cols and "field_map_json" not in cols:
+            conn.execute(text("ALTER TABLE exams ADD COLUMN field_map_json TEXT DEFAULT '{}'"))
 
 
 def init_db() -> None:

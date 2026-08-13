@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, Student } from "../api";
 
 const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
@@ -14,11 +15,23 @@ const labels: Record<string, string> = {
 export default function Students() {
   const [rows, setRows] = useState<Student[]>([]);
   const [form, setForm] = useState(empty);
+  const [query, setQuery] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const load = () => api.get("/api/students").then(setRows);
   useEffect(() => { load(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((s) =>
+      [s.roll_no, s.name, s.gender, s.class_name, s.section, s.session]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [rows, query]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -62,6 +75,14 @@ export default function Students() {
           <button type="button" className="secondary" onClick={() => fileRef.current?.click()}>
             Upload XLSX sheet
           </button>
+          <label>
+            Search students
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Roll, name, gender, class, section, or session"
+            />
+          </label>
         </div>
         {msg && <p>{msg}</p>}
         {err && <p className="error">{err}</p>}
@@ -92,16 +113,19 @@ export default function Students() {
             <tr><th>Roll no</th><th>Student Name</th><th>Gender</th><th>Class</th><th>Section</th><th>Session</th><th></th></tr>
           </thead>
           <tbody>
-            {rows.map((s) => (
+            {filtered.map((s) => (
               <tr key={s.id}>
                 <td>{s.roll_no}</td><td>{s.name}</td><td>{s.gender}</td><td>{s.class_name}</td><td>{s.section}</td><td>{s.session}</td>
                 <td>
+                  <Link to={`/students/${s.id}`}>View</Link>
+                  {" · "}
                   <button type="button" className="ghost" onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {filtered.length === 0 && <p className="muted">No students match that search.</p>}
       </div>
     </>
   );

@@ -10,6 +10,8 @@ export type ExamFormState = {
   wrong_marks: number;
   unattempted_marks: number;
   layout_id: number;
+  test_id: string;
+  test_no: string;
 };
 
 export function examToForm(exam: Exam): ExamFormState {
@@ -22,6 +24,8 @@ export function examToForm(exam: Exam): ExamFormState {
     wrong_marks: exam.wrong_marks,
     unattempted_marks: exam.unattempted_marks,
     layout_id: exam.layout_id,
+    test_id: exam.test_id || "",
+    test_no: exam.test_no || "",
   };
 }
 
@@ -68,6 +72,8 @@ export default function ExamForm({
           </select>
         </label>
         <label>Duration (minutes)<input type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></label>
+        <label>Test ID<input value={form.test_id} onChange={(e) => setForm({ ...form, test_id: e.target.value })} /></label>
+        <label>Test No<input value={form.test_no} onChange={(e) => setForm({ ...form, test_no: e.target.value })} /></label>
       </div>
       <h3>Marking scheme</h3>
       <div className="row">

@@ -38,6 +38,8 @@ class LayoutOut(BaseModel):
     options: str
     is_builtin: bool
     has_sample: bool = False
+    field_map: dict[str, str] = Field(default_factory=dict)
+    analysis: list[dict] = Field(default_factory=list)
     preview: dict | None = None
 
     model_config = {"from_attributes": True}
@@ -65,6 +67,8 @@ class ExamIn(BaseModel):
     wrong_marks: float = -1.0
     unattempted_marks: float = 0.0
     layout_id: int
+    test_id: str = ""
+    test_no: str = ""
     subject_maps: list[SubjectMapIn] = Field(default_factory=list)
     answer_key: dict[str, str] = Field(default_factory=dict)
 
@@ -88,6 +92,10 @@ class ExamOut(BaseModel):
     sheet_count: int = 0
     evaluated_count: int = 0
     has_sample: bool = False
+    test_id: str = ""
+    test_no: str = ""
+    field_map: dict[str, str] = Field(default_factory=dict)
+    analysis: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

@@ -12,15 +12,17 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Subject
+from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
+from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import AnswerKeyIn, ExamIn, ExamOut, SheetOut, SubjectMapOut
 from ..scoring import build_analytics, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
 
 
-def _exam_out(exam: Exam) -> ExamOut:
+def _exam_out(exam: Exam, *, with_analysis: bool = False) -> ExamOut:
     maps = []
     for mapping in exam.subject_maps:
         maps.append(
@@ -52,7 +54,25 @@ def _exam_out(exam: Exam) -> ExamOut:
         sheet_count=len(sheets),
         evaluated_count=sum(1 for s in sheets if s.status in ("evaluated", "unmatched")),
         has_sample=bool(getattr(exam, "sample_path", "")),
+        test_id=getattr(exam, "test_id", "") or "",
+        test_no=getattr(exam, "test_no", "") or "",
+        field_map=json.loads(getattr(exam, "field_map_json", None) or "{}")
+        or json.loads(getattr(exam.layout, "field_map_json", None) or "{}"),
+        analysis=_exam_analysis(exam) if with_analysis else [],
     )
+
+
+def _exam_analysis(exam: Exam) -> list[dict]:
+    if not exam.layout:
+        return []
+    layout = parse_layout(exam.layout.config_json)
+    img = None
+    if getattr(exam, "sample_path", "") and Path(exam.sample_path).exists():
+        try:
+            img = load_image(exam.sample_path)
+        except Exception:
+            img = None
+    return analyze_layout_config(layout, img)
 
 
 def _load_exam(db: Session, exam_id: int) -> Exam:
@@ -93,6 +113,8 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
         unattempted_marks=payload.unattempted_marks,
         layout_id=payload.layout_id,
         answer_key_json=json.dumps(payload.answer_key),
+        test_id=payload.test_id,
+        test_no=payload.test_no,
         status="draft",
     )
     db.add(exam)
@@ -121,6 +143,7 @@ def _replace_subject_maps(db: Session, exam: Exam, payload_maps: list, layout: O
                     }
                 )
     db.query(ExamSubjectMap).filter(ExamSubjectMap.exam_id == exam.id).delete()
+    db.flush()
     for mapping in maps:
         db.add(
             ExamSubjectMap(
@@ -134,7 +157,7 @@ def _replace_subject_maps(db: Session, exam: Exam, payload_maps: list, layout: O
 
 @router.get("/{exam_id}", response_model=ExamOut)
 def get_exam(exam_id: int, db: Session = Depends(get_db)):
-    return _exam_out(_load_exam(db, exam_id))
+    return _exam_out(_load_exam(db, exam_id), with_analysis=True)
 
 
 @router.put("/{exam_id}", response_model=ExamOut)
@@ -151,6 +174,8 @@ def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
     exam.wrong_marks = payload.wrong_marks
     exam.unattempted_marks = payload.unattempted_marks
     exam.layout_id = payload.layout_id
+    exam.test_id = payload.test_id
+    exam.test_no = payload.test_no
     _replace_subject_maps(db, exam, payload.subject_maps, layout)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
@@ -161,12 +186,42 @@ async def upload_omr_sample(exam_id: int, file: UploadFile = File(...), db: Sess
     exam = _load_exam(db, exam_id)
     dest_dir = UPLOAD_DIR / f"exam-{exam.id}"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file.filename or "sample.png").suffix or ".png"
+    raw = await file.read()
+    try:
+        image_bytes, suffix = sample_to_image_bytes(file.filename or "sample.jpg", raw)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     stored = dest_dir / f"omr-sample{suffix}"
-    stored.write_bytes(await file.read())
+    stored.write_bytes(image_bytes)
     exam.sample_path = str(stored)
     db.commit()
-    return {"ok": True, "filename": file.filename}
+    layout = parse_layout(exam.layout.config_json)
+    analysis = analyze_layout_config(layout, load_image(stored))
+    return {
+        "ok": True,
+        "filename": file.filename,
+        "analysis": analysis,
+        "field_map": json.loads(
+            getattr(exam, "field_map_json", None)
+            or getattr(exam.layout, "field_map_json", None)
+            or "{}"
+        ),
+        "targets": [
+            {"value": "", "label": "Ignore"},
+            {"value": "exam_date", "label": "Exam Date"},
+            {"value": "test_id", "label": "Test ID"},
+            {"value": "test_no", "label": "Test No"},
+        ],
+    }
+
+
+@router.post("/{exam_id}/field-map")
+def save_exam_field_map(exam_id: int, payload: dict, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    mapping = payload.get("field_map") or payload
+    exam.field_map_json = json.dumps(mapping)
+    db.commit()
+    return {"ok": True, "field_map": mapping}
 
 
 @router.get("/{exam_id}/sample")

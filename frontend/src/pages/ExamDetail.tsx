@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, Exam, Layout, Subject } from "../api";
 import ExamForm, { ExamFormState, examToForm } from "../components/ExamForm";
 import EvaluationPanel from "../components/EvaluationPanel";
+import FieldMapper from "../components/FieldMapper";
 
 type Sheet = {
   id: number;
@@ -81,7 +82,10 @@ export default function ExamDetail() {
     <>
       <h2>{exam.name}</h2>
       <p className="muted">
-        {exam.exam_type} · {exam.exam_date} · {exam.duration_minutes} min · marking +{exam.correct_marks}/{exam.wrong_marks}/{exam.unattempted_marks} · layout {exam.layout_name}
+        {exam.exam_type} · {exam.exam_date}
+        {exam.test_id ? ` · Test ID ${exam.test_id}` : ""}
+        {exam.test_no ? ` · Test No ${exam.test_no}` : ""}
+        {" · "}{exam.duration_minutes} min · marking +{exam.correct_marks}/{exam.wrong_marks}/{exam.unattempted_marks} · layout {exam.layout_name}
       </p>
       <div className="tabs">
         <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>Overview</button>
@@ -100,11 +104,11 @@ export default function ExamDetail() {
           </div>
           <div className="card">
             <h3>Upload OMR sample</h3>
-            <p className="muted">Store a blank or filled sample of the printed sheet used for this exam.</p>
+            <p className="muted">Upload a PDF or JPG of the sheet. Detected fields can be mapped to Exam Date, Test ID, and Test No.</p>
             <input
               ref={sampleRef}
               type="file"
-              accept="image/*"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/*"
               hidden
               onChange={async (e) => {
                 const file = e.target.files?.[0];
@@ -112,7 +116,7 @@ export default function ExamDetail() {
                 const data = new FormData();
                 data.append("file", file);
                 await api.post(`/api/exams/${id}/sample`, data);
-                setMsg("OMR sample uploaded.");
+                setMsg("OMR sample uploaded and analyzed.");
                 load();
               }}
             />
@@ -123,12 +127,24 @@ export default function ExamDetail() {
               </p>
             )}
             {msg && <p>{msg}</p>}
+            {(exam.analysis || []).length > 0 && (
+              <FieldMapper
+                analysis={exam.analysis || []}
+                fieldMap={exam.field_map || {}}
+                onSave={async (next) => {
+                  await api.post(`/api/exams/${id}/field-map`, { field_map: next });
+                  load();
+                }}
+              />
+            )}
           </div>
         </>
       )}
 
       {tab === "edit" && (
-        <ExamForm
+        <>
+          {msg && <p>{msg}</p>}
+          <ExamForm
           form={form}
           setForm={setForm}
           maps={maps}
@@ -139,6 +155,7 @@ export default function ExamDetail() {
           onSubmit={onEdit}
           err={err}
         />
+        </>
       )}
 
       {tab === "evaluation" && (
