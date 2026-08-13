@@ -20,7 +20,7 @@ from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet, prefill_on_layout_sample
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
 from ..omr.sample_file import sample_to_image_bytes
-from ..schemas import AnswerKeyIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
+from ..schemas import AnswerKeyIn, AssignSheetIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
 from ..scoring import assigned_students, bind_sheet_student, build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
@@ -374,6 +374,8 @@ def _sheet_out(sheet: ExamSheet) -> SheetOut:
         wrong_count=sheet.wrong_count,
         left_count=sheet.left_count,
         invalid_count=sheet.invalid_count,
+        has_overlay=bool(sheet.overlay_path and Path(sheet.overlay_path).exists()),
+        assigned_manually=bool(getattr(sheet, "assigned_manually", False)),
     )
 
 
@@ -540,12 +542,67 @@ def exam_results_xlsx(exam_id: int, db: Session = Depends(get_db)):
     )
 
 
+def _get_sheet(db: Session, exam_id: int, sheet_id: int) -> ExamSheet:
+    sheet = db.get(ExamSheet, sheet_id)
+    if not sheet or sheet.exam_id != exam_id:
+        raise HTTPException(404, "Sheet not found")
+    return sheet
+
+
 @router.get("/{exam_id}/sheets/{sheet_id}/overlay")
 def sheet_overlay(exam_id: int, sheet_id: int, db: Session = Depends(get_db)):
-    sheet = db.get(ExamSheet, sheet_id)
-    if not sheet or sheet.exam_id != exam_id or not sheet.overlay_path:
-        raise HTTPException(404, "Overlay not found")
-    return FileResponse(sheet.overlay_path)
+    sheet = _get_sheet(db, exam_id, sheet_id)
+    if sheet.overlay_path and Path(sheet.overlay_path).exists():
+        return FileResponse(sheet.overlay_path)
+    if sheet.stored_path and Path(sheet.stored_path).exists():
+        return FileResponse(sheet.stored_path)
+    raise HTTPException(404, "Sheet image not found")
+
+
+@router.get("/{exam_id}/sheets/{sheet_id}/image")
+def sheet_image(exam_id: int, sheet_id: int, db: Session = Depends(get_db)):
+    sheet = _get_sheet(db, exam_id, sheet_id)
+    path = sheet.overlay_path if sheet.overlay_path and Path(sheet.overlay_path).exists() else sheet.stored_path
+    if not path or not Path(path).exists():
+        raise HTTPException(404, "Sheet image not found")
+    return FileResponse(path)
+
+
+@router.put("/{exam_id}/sheets/{sheet_id}/assign", response_model=SheetOut)
+def assign_sheet(exam_id: int, sheet_id: int, payload: AssignSheetIn, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    sheet = _get_sheet(db, exam_id, sheet_id)
+    student = db.get(Student, payload.student_id)
+    if not student:
+        raise HTTPException(404, "Student not found")
+    sheet.student_id = student.id
+    sheet.assigned_manually = True
+    sheet.error_message = ""
+    if sheet.answers_json and sheet.answers_json != "{}":
+        sheet.status = "evaluated"
+    elif sheet.status == "unmatched":
+        sheet.status = "uploaded"
+    db.commit()
+    db.refresh(sheet)
+    return _sheet_out(sheet)
+
+
+@router.post("/{exam_id}/reset-omr")
+def reset_omr(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    removed = 0
+    for sheet in list(exam.sheets):
+        for path in (sheet.stored_path, sheet.overlay_path):
+            if path:
+                file_path = Path(path)
+                if file_path.exists() and file_path.is_file():
+                    file_path.unlink()
+        db.delete(sheet)
+        removed += 1
+    if exam.status in ("evaluated", "published"):
+        exam.status = "draft"
+    db.commit()
+    return {"ok": True, "removed": removed, "status": exam.status}
 
 
 @router.post("/{exam_id}/sample-sheet")

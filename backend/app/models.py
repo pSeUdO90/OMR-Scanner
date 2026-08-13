@@ -122,6 +122,7 @@ class ExamSheet(Base):
     left_count: Mapped[int] = mapped_column(Integer, default=0)
     invalid_count: Mapped[int] = mapped_column(Integer, default=0)
     overlay_path: Mapped[str] = mapped_column(String(500), default="")
+    assigned_manually: Mapped[bool] = mapped_column(default=False)
 
     exam: Mapped[Exam] = relationship(back_populates="sheets")
     student: Mapped[Student | None] = relationship(back_populates="sheets")

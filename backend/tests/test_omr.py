@@ -247,3 +247,27 @@ def test_student_import_and_exam_flow(tmp_path):
     assert neet["overall_rwl"]["right"] == 180
     assert neet["score"] == 720
     assert neet["subjects"]
+    unmatched_sheet = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "9999999999"})
+    assert unmatched_sheet.status_code == 200, unmatched_sheet.text
+    unmatched_id = unmatched_sheet.json()["id"]
+    client.post(f"/api/exams/{exam_id}/evaluate")
+    unmatched_rows = [row for row in client.get(f"/api/exams/{exam_id}/sheets").json() if row["id"] == unmatched_id]
+    assert unmatched_rows and unmatched_rows[0]["status"] == "unmatched"
+    assigned = client.put(
+        f"/api/exams/{exam_id}/sheets/{unmatched_id}/assign",
+        json={"student_id": student["id"]},
+    )
+    assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["status"] == "evaluated"
+    assert assigned.json()["student_name"] == "Aarav Mishra"
+    assert assigned.json()["assigned_manually"] is True
+    image = client.get(f"/api/exams/{exam_id}/sheets/{unmatched_id}/image")
+    assert image.status_code == 200
+    saved_key = client.get(f"/api/exams/{exam_id}").json()["answer_key"]
+    reset = client.post(f"/api/exams/{exam_id}/reset-omr")
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["removed"] >= 1
+    assert client.get(f"/api/exams/{exam_id}/sheets").json() == []
+    after_reset = client.get(f"/api/exams/{exam_id}").json()
+    assert after_reset["answer_key"] == saved_key
+    assert after_reset["status"] == "draft"

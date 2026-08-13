@@ -58,6 +58,11 @@ def assigned_students(db: Session, exam: Exam) -> list[Student]:
 def bind_sheet_student(db: Session, exam: Exam, sheet: ExamSheet, detected_roll: str, *, scored: bool = False) -> bool:
     roll = (detected_roll or "").strip()
     sheet.detected_roll = roll
+    if getattr(sheet, "assigned_manually", False) and sheet.student_id:
+        if scored:
+            sheet.status = "evaluated"
+            sheet.error_message = ""
+        return True
     student = db.query(Student).filter(Student.roll_no == roll).one_or_none() if roll else None
     assigned_ids = {row.id for row in assigned_students(db, exam)}
     if student and student.id in assigned_ids:

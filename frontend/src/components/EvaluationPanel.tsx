@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, Exam } from "../api";
+import { api, Exam, Student } from "../api";
 
 type Sheet = {
   id: number;
@@ -7,6 +7,7 @@ type Sheet = {
   status: string;
   detected_roll: string;
   student_name: string;
+  student_id?: number | null;
   raw_score: number;
   max_score: number;
   right_count: number;
@@ -16,6 +17,29 @@ type Sheet = {
 };
 
 const OPTIONS = ["A", "B", "C", "D"];
+
+function FileNameCell({
+  sheet,
+  onView,
+}: {
+  sheet: Sheet;
+  onView: (sheet: Sheet) => void;
+}) {
+  return (
+    <td className="file-cell">
+      <span>{sheet.filename}</span>
+      <button
+        type="button"
+        className="icon-btn"
+        title="View sheet"
+        aria-label="View sheet"
+        onClick={() => onView(sheet)}
+      >
+        <img src="/view.png" alt="" width={22} height={22} />
+      </button>
+    </td>
+  );
+}
 
 export default function EvaluationPanel({
   exam,
@@ -38,11 +62,18 @@ export default function EvaluationPanel({
   const total = exam.total_questions || 40;
   const [answers, setAnswers] = useState<Record<string, string>>(exam.answer_key || {});
   const [graceText, setGraceText] = useState((exam.grace_questions || []).join(", "));
+  const [students, setStudents] = useState<Student[]>([]);
+  const [assigning, setAssigning] = useState<Record<number, number>>({});
+  const [viewSheet, setViewSheet] = useState<Sheet | null>(null);
 
   useEffect(() => {
     setAnswers(exam.answer_key || {});
     setGraceText((exam.grace_questions || []).join(", "));
   }, [exam.id, exam.answer_key, exam.grace_questions]);
+
+  useEffect(() => {
+    api.get("/api/students").then(setStudents);
+  }, []);
 
   const groups = useMemo(() => {
     if (exam.subject_maps?.length) {
@@ -55,6 +86,8 @@ export default function EvaluationPanel({
   }, [exam.subject_maps, total]);
 
   const filled = Object.keys(answers).filter((k) => answers[k]).length;
+  const matched = sheets.filter((s) => s.status !== "unmatched");
+  const unmatched = sheets.filter((s) => s.status === "unmatched");
 
   const saveKey = async () => {
     setErr("");
@@ -71,13 +104,13 @@ export default function EvaluationPanel({
 
   return (
     <>
-      <div className="card answer-key-card">
-        <div className="answer-key-toolbar">
+      <details className="card answer-key-card" open>
+        <summary className="answer-key-toolbar">
           <div>
             <h3>Answer key</h3>
             <p className="muted">Tap A–D for each question. {filled}/{total} marked.</p>
           </div>
-          <div className="row" style={{ flex: "0 0 auto" }}>
+          <div className="row" style={{ flex: "0 0 auto" }} onClick={(e) => e.stopPropagation()}>
             <input
               ref={keyRef}
               type="file"
@@ -105,7 +138,7 @@ export default function EvaluationPanel({
             <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload key file</button>
             <button type="button" onClick={saveKey}>Save answer key</button>
           </div>
-        </div>
+        </summary>
         {groups.map((group) => (
           <section className="key-block" key={group.title}>
             <h4>{group.title}</h4>
@@ -130,7 +163,7 @@ export default function EvaluationPanel({
             </div>
           </section>
         ))}
-      </div>
+      </details>
       <div className="card">
         <h3>Grace questions</h3>
         <p className="muted">Enter question numbers that receive grace (full marks). Use commas or ranges, for example 12, 18, 40-42.</p>
@@ -195,27 +228,47 @@ export default function EvaluationPanel({
         <p className="muted">Uses the OMR layout PDF/JPG attached to this exam. Student name, roll number, Test No, Test ID, and exam date are filled for every assigned student.</p>
       </div>
       <div className="card">
-        <button onClick={async () => {
-          setErr("");
-          try {
-            const res = await api.post(`/api/exams/${id}/evaluate`);
-            setMsg(`Evaluated ${res.evaluated} sheet(s).`);
-            onReload();
-          } catch (error) {
-            setErr(error instanceof Error ? error.message : "Evaluation failed");
-          }
-        }}>Evaluate uploaded OMR sheets</button>
+        <div className="row">
+          <button onClick={async () => {
+            setErr("");
+            try {
+              const res = await api.post(`/api/exams/${id}/evaluate`);
+              setMsg(`Evaluated ${res.evaluated} sheet(s).`);
+              onReload();
+            } catch (error) {
+              setErr(error instanceof Error ? error.message : "Evaluation failed");
+            }
+          }}>Evaluate uploaded OMR sheets</button>
+          <button
+            type="button"
+            className="btn-delete"
+            onClick={async () => {
+              if (!confirm("Clear all uploaded OMR sheets and scores for this exam? The answer key and exam details will be kept.")) return;
+              setErr("");
+              try {
+                const res = await api.post(`/api/exams/${id}/reset-omr`);
+                setMsg(`OMR data cleared (${res.removed} sheet(s) removed).`);
+                setViewSheet(null);
+                onReload();
+              } catch (error) {
+                setErr(error instanceof Error ? error.message : "Could not reset OMR data");
+              }
+            }}
+          >
+            Reset OMR data
+          </button>
+        </div>
         {msg && <p>{msg}</p>}
         {err && <p className="error">{err}</p>}
       </div>
       <div className="card">
-        <h3>Sheets</h3>
+        <h3>Matched Sheets</h3>
         <table>
           <thead><tr><th>File</th><th>Roll</th><th>Student</th><th>R/W/L</th><th>Score</th><th>Status</th></tr></thead>
           <tbody>
-            {sheets.filter((s) => s.status !== "unmatched").map((s) => (
+            {matched.map((s) => (
               <tr key={s.id}>
-                <td>{s.filename}</td>
+                <FileNameCell sheet={s} onView={setViewSheet} />
                 <td>{s.detected_roll}</td>
                 <td>{s.student_name}</td>
                 <td><span className="pill R">{s.right_count}</span> <span className="pill W">{s.wrong_count}</span> <span className="pill L">{s.left_count}</span></td>
@@ -225,19 +278,50 @@ export default function EvaluationPanel({
             ))}
           </tbody>
         </table>
-        {sheets.filter((s) => s.status !== "unmatched").length === 0 && <p className="muted">No matched sheets yet.</p>}
+        {matched.length === 0 && <p className="muted">No matched sheets yet.</p>}
       </div>
       <div className="card">
         <h3>Unmatched OMR sheets</h3>
-        <p className="muted">Scanned sheets whose roll number does not match a student assigned to this exam.</p>
+        <p className="muted">Scanned sheets whose roll number does not match a student assigned to this exam. Assign a student to move the file into Matched Sheets.</p>
         <table>
-          <thead><tr><th>File</th><th>Detected roll</th><th>Matched student</th><th>R/W/L</th><th>Score</th><th>Reason</th></tr></thead>
+          <thead><tr><th>File</th><th>Detected roll</th><th>Assign student</th><th>R/W/L</th><th>Score</th><th>Reason</th></tr></thead>
           <tbody>
-            {sheets.filter((s) => s.status === "unmatched").map((s) => (
+            {unmatched.map((s) => (
               <tr key={s.id}>
-                <td>{s.filename}</td>
+                <FileNameCell sheet={s} onView={setViewSheet} />
                 <td>{s.detected_roll || "—"}</td>
-                <td>{s.student_name || "—"}</td>
+                <td>
+                  <div className="assign-row">
+                    <select
+                      value={assigning[s.id] || ""}
+                      onChange={(e) => setAssigning({ ...assigning, [s.id]: Number(e.target.value) })}
+                    >
+                      <option value="">Select student</option>
+                      {students.map((st) => (
+                        <option key={st.id} value={st.id}>
+                          {st.roll_no} — {st.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={!assigning[s.id]}
+                      onClick={async () => {
+                        setErr("");
+                        try {
+                          await api.put(`/api/exams/${id}/sheets/${s.id}/assign`, { student_id: assigning[s.id] });
+                          setMsg(`Assigned ${s.filename} to the selected student.`);
+                          onReload();
+                        } catch (error) {
+                          setErr(error instanceof Error ? error.message : "Could not assign sheet");
+                        }
+                      }}
+                    >
+                      Assign
+                    </button>
+                  </div>
+                </td>
                 <td><span className="pill R">{s.right_count}</span> <span className="pill W">{s.wrong_count}</span> <span className="pill L">{s.left_count}</span></td>
                 <td>{s.raw_score}/{s.max_score}</td>
                 <td>{s.error_message || "Not assigned to this exam"}</td>
@@ -245,8 +329,23 @@ export default function EvaluationPanel({
             ))}
           </tbody>
         </table>
-        {sheets.filter((s) => s.status === "unmatched").length === 0 && <p className="muted">No unmatched sheets.</p>}
+        {unmatched.length === 0 && <p className="muted">No unmatched sheets.</p>}
       </div>
+      {viewSheet && (
+        <div className="sheet-modal" role="dialog" aria-modal="true" aria-label={`View ${viewSheet.filename}`}>
+          <div className="sheet-modal-card">
+            <div className="sheet-modal-bar">
+              <strong>{viewSheet.filename}</strong>
+              <button type="button" className="secondary" onClick={() => setViewSheet(null)}>Close</button>
+            </div>
+            <img
+              className="sheet-modal-img"
+              src={`/api/exams/${id}/sheets/${viewSheet.id}/image?t=${viewSheet.id}`}
+              alt={viewSheet.filename}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

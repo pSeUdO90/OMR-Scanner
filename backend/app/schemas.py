@@ -116,6 +116,10 @@ class AnswerKeyIn(BaseModel):
     key_string: str | None = None
 
 
+class AssignSheetIn(BaseModel):
+    student_id: int
+
+
 class SheetOut(BaseModel):
     id: int
     exam_id: int
@@ -131,6 +135,8 @@ class SheetOut(BaseModel):
     wrong_count: int
     left_count: int
     invalid_count: int
+    has_overlay: bool = False
+    assigned_manually: bool = False
 
     model_config = {"from_attributes": True}
 

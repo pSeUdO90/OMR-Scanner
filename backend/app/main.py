@@ -38,6 +38,9 @@ def _ensure_columns() -> None:
             conn.execute(text("ALTER TABLE exams ADD COLUMN section VARCHAR(20) DEFAULT ''"))
         if cols and "batch" not in cols:
             conn.execute(text("ALTER TABLE exams ADD COLUMN batch VARCHAR(40) DEFAULT ''"))
+        sheet_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(exam_sheets)")).fetchall()}
+        if sheet_cols and "assigned_manually" not in sheet_cols:
+            conn.execute(text("ALTER TABLE exam_sheets ADD COLUMN assigned_manually BOOLEAN DEFAULT 0"))
 
 
 def init_db() -> None:
