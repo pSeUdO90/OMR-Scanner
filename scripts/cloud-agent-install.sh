@@ -5,7 +5,19 @@ set -euo pipefail
 # Python/Node manifests (empty main) and on this app's full tree.
 cd "$(dirname "$0")/.."
 
-python3 -m venv .venv
+# Default Ubuntu images ship python3 without ensurepip, so `python3 -m venv`
+# fails unless python3-venv is installed first.
+if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install -y --no-install-recommends python3-venv python3-pip
+fi
+
+# Recreate a partial venv left behind by a previous failed install.
+if [[ ! -x .venv/bin/python ]] || ! .venv/bin/python -c 'import pip' >/dev/null 2>&1; then
+  rm -rf .venv
+  python3 -m venv .venv
+fi
+
 .venv/bin/pip install --upgrade pip
 
 if [[ -f backend/requirements.txt ]]; then
