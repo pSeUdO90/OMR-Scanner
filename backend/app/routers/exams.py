@@ -17,11 +17,11 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Student, Subject
 from ..omr.analyze import analyze_layout_config
-from ..omr.generator import generate_sheet
+from ..omr.generator import generate_sheet, prefill_on_layout_sample
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import AnswerKeyIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
-from ..scoring import build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
+from ..scoring import assigned_students, bind_sheet_student, build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
 
@@ -34,22 +34,6 @@ def allocate_test_id(db: Session) -> str:
         if digits:
             highest = max(highest, int(digits))
     return f"{highest + 1:04d}"
-
-
-def parse_csv_values(value: str | None) -> list[str]:
-    return [part.strip() for part in (value or "").replace(";", ",").split(",") if part.strip()]
-
-
-def assigned_students(db: Session, exam: Exam) -> list[Student]:
-    query = db.query(Student)
-    if exam.class_name:
-        query = query.filter(Student.class_name == exam.class_name)
-    sections = parse_csv_values(exam.section)
-    if sections:
-        query = query.filter(Student.section.in_(sections))
-    if exam.batch:
-        query = query.filter(Student.session == exam.batch)
-    return query.order_by(Student.roll_no).all()
 
 
 def _exam_out(exam: Exam, *, with_analysis: bool = False) -> ExamOut:
@@ -362,6 +346,14 @@ async def upload_sheets(exam_id: int, files: list[UploadFile] = File(...), db: S
         db.add(sheet)
         db.commit()
         db.refresh(sheet)
+        try:
+            layout = parse_layout(exam.layout.config_json)
+            result = evaluate_image(load_image(stored), layout)
+            bind_sheet_student(db, exam, sheet, result["roll"])
+            db.commit()
+            db.refresh(sheet)
+        except Exception:
+            pass
         saved.append(_sheet_out(sheet))
     return saved
 
@@ -595,15 +587,21 @@ def prefilled_omr_pdf(exam_id: int, db: Session = Depends(get_db)):
     if not students:
         raise HTTPException(400, "No students assigned to this exam. Set class, section, and batch from the student list.")
     layout = parse_layout(exam.layout.config_json)
+    sample_path = getattr(exam.layout, "sample_path", "") or ""
+    if not sample_path or not Path(sample_path).exists():
+        raise HTTPException(400, "Upload an OMR layout sample PDF/JPG before generating pre-filled sheets.")
+    base = load_image(sample_path)
     pages = []
+    exam_date = str(exam.exam_date)
     for student in students:
-        image = generate_sheet(
+        image = prefill_on_layout_sample(
+            base,
             layout,
-            student.roll_no,
-            {},
+            roll=student.roll_no,
             student_name=student.name,
             test_id=exam.test_id or "",
             test_no=exam.test_no or "",
+            exam_date=exam_date,
         )
         rgb = image[:, :, ::-1]
         pages.append(Image.fromarray(rgb))

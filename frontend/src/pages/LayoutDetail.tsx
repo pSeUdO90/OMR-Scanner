@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
-import { EditButton } from "../components/ActionButtons";
+import { EditButton, ViewButton } from "../components/ActionButtons";
 import FieldMapper from "../components/FieldMapper";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
 import PageTitle from "../components/PageTitle";
@@ -82,7 +82,7 @@ export default function LayoutDetail() {
       <p className="muted"><Link to="/layouts">← OMR layouts</Link></p>
       <PageTitle icon="layouts">{layout.name}</PageTitle>
       <div className="tabs">
-        <button type="button" className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</button>
+        <ViewButton className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</ViewButton>
         <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
       </div>
       {tab === "view" && (

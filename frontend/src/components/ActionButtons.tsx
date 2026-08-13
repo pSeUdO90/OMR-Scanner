@@ -9,6 +9,14 @@ export function IconEdit() {
   );
 }
 
+export function IconView() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path fill="currentColor" d="M8 3c3.3 0 6.2 2 7.5 5-1.3 3-4.2 5-7.5 5S1.8 11 .5 8C1.8 5 4.7 3 8 3Zm0 2.2A2.8 2.8 0 1 0 8 10.8 2.8 2.8 0 0 0 8 5.2Z" />
+    </svg>
+  );
+}
+
 export function IconDelete() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -30,6 +38,22 @@ export function DeleteButton({ children = "Delete", className = "", ...props }: 
     <button type="button" className={`btn-delete ${className}`.trim()} {...props}>
       <IconDelete /> {children}
     </button>
+  );
+}
+
+export function ViewButton({ children = "View", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children?: ReactNode }) {
+  return (
+    <button type="button" className={`btn-view ${className}`.trim()} {...props}>
+      <IconView /> {children}
+    </button>
+  );
+}
+
+export function ViewLink({ to, children = "View" }: { to: string; children?: ReactNode }) {
+  return (
+    <Link className="btn-view" to={to}>
+      <IconView /> {children}
+    </Link>
   );
 }
 

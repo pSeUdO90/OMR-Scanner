@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, Exam } from "../api";
+import { ViewLink } from "../components/ActionButtons";
 import { Icon, iconPaths } from "../components/Icons";
 import PageTitle from "../components/PageTitle";
 
@@ -55,7 +55,7 @@ export default function Reports() {
               <a className="btn secondary" href={`/api/exams/${exam.id}/results.csv`}>
                 <Icon path={iconPaths.sheet} size={16} /> Export RWL CSV
               </a>
-              <Link className="btn ghost" to={`/exams/${exam.id}/results`}>View results</Link>
+              <ViewLink to={`/exams/${exam.id}/results`}>View results</ViewLink>
             </div>
           </div>
         )}

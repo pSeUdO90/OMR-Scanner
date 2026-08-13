@@ -231,6 +231,14 @@ def test_student_import_and_exam_flow(tmp_path):
     assert client.get(f"/api/exams/{extra.json()['id']}").status_code == 404
     unused_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
     assert unused_layout.status_code == 200
+    from app.xlsx_io import students_template_bytes
+    xlsx = students_template_bytes()
+    preview = client.post("/api/students/import/preview", files={"file": ("students.xlsx", xlsx)})
+    assert preview.status_code == 200, preview.text
+    assert any(row["roll_no"] == "2400100001" for row in preview.json()["existing"])
+    skipped = client.post("/api/students/import?on_conflict=skip", files={"file": ("students.xlsx", xlsx)})
+    assert skipped.status_code == 200, skipped.text
+    assert skipped.json()["skipped"] >= 1
     student = next(s for s in client.get("/api/students").json() if s["roll_no"] == "2400100001")
     history = client.get(f"/api/students/{student['id']}/results").json()
     assert history["student"]["name"] == "Aarav Mishra"

@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
-import { DeleteButton, EditLink } from "../components/ActionButtons";
+import { DeleteButton, EditLink, ViewLink } from "../components/ActionButtons";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
 import PageTitle from "../components/PageTitle";
 
@@ -111,7 +110,7 @@ export default function Layouts() {
               <p className="muted">No sample image on file.</p>
             )}
             <div className="actions">
-              <Link className="btn" to={`/layouts/${layout.id}`}>View</Link>
+              <ViewLink to={`/layouts/${layout.id}`}>View</ViewLink>
               <EditLink to={`/layouts/${layout.id}?tab=edit`}>Edit</EditLink>
               <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
             </div>

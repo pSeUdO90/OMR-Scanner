@@ -18,10 +18,7 @@ export default function App() {
       <nav className="nav">
         <div className="brand">
           <img src="/logo.jpg" alt="Gyana Vikash" />
-          <div>
-            <h1>Gyana Vikash OMR</h1>
-            <p>Scan. Score. Publish RWL.</p>
-          </div>
+          <h1>Gyana Vikash OMR</h1>
         </div>
         <NavLink to="/" end><NavIcon name="dashboard" /> Dashboard</NavLink>
         <NavLink to="/students"><NavIcon name="students" /> Students</NavLink>

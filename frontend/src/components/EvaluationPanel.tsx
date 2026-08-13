@@ -192,7 +192,7 @@ export default function EvaluationPanel({
         <a className="btn secondary" href={`/api/exams/${id}/prefilled-omr`}>
           Generate Pre-Filled OMR
         </a>
-        <p className="muted">Downloads a PDF with roll number, name, and Test ID filled for every student assigned to this exam (class, section, batch).</p>
+        <p className="muted">Uses the OMR layout PDF/JPG attached to this exam. Student name, roll number, Test No, Test ID, and exam date are filled for every assigned student.</p>
       </div>
       <div className="card">
         <button onClick={async () => {
@@ -213,7 +213,7 @@ export default function EvaluationPanel({
         <table>
           <thead><tr><th>File</th><th>Roll</th><th>Student</th><th>R/W/L</th><th>Score</th><th>Status</th></tr></thead>
           <tbody>
-            {sheets.map((s) => (
+            {sheets.filter((s) => s.status !== "unmatched").map((s) => (
               <tr key={s.id}>
                 <td>{s.filename}</td>
                 <td>{s.detected_roll}</td>
@@ -225,6 +225,27 @@ export default function EvaluationPanel({
             ))}
           </tbody>
         </table>
+        {sheets.filter((s) => s.status !== "unmatched").length === 0 && <p className="muted">No matched sheets yet.</p>}
+      </div>
+      <div className="card">
+        <h3>Unmatched OMR sheets</h3>
+        <p className="muted">Scanned sheets whose roll number does not match a student assigned to this exam.</p>
+        <table>
+          <thead><tr><th>File</th><th>Detected roll</th><th>Matched student</th><th>R/W/L</th><th>Score</th><th>Reason</th></tr></thead>
+          <tbody>
+            {sheets.filter((s) => s.status === "unmatched").map((s) => (
+              <tr key={s.id}>
+                <td>{s.filename}</td>
+                <td>{s.detected_roll || "—"}</td>
+                <td>{s.student_name || "—"}</td>
+                <td><span className="pill R">{s.right_count}</span> <span className="pill W">{s.wrong_count}</span> <span className="pill L">{s.left_count}</span></td>
+                <td>{s.raw_score}/{s.max_score}</td>
+                <td>{s.error_message || "Not assigned to this exam"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {sheets.filter((s) => s.status === "unmatched").length === 0 && <p className="muted">No unmatched sheets.</p>}
       </div>
     </>
   );
