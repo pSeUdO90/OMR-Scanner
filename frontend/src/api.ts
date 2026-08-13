@@ -45,10 +45,12 @@ export type Subject = { id: number; name: string; code: string };
 export type AnalysisField = {
   key: string;
   label: string;
+  class?: string;
   detected: boolean;
   detail: string;
   value: string;
   mappable: boolean;
+  region?: { x0: number; y0: number; x1: number; y1: number } | null;
 };
 
 export type Layout = {

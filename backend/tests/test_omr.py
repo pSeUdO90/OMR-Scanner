@@ -49,6 +49,27 @@ def test_real_gyana_scan_reads_eight_digit_roll():
     assert result["roll"] == "24001001"
 
 
+def test_sample_omr_classifies_fields():
+    from app.omr.analyze import classify_sample_image
+    from app.omr.layouts import custom_grid_layout
+
+    sample = Path("/workspace/backend/uploads/layouts/neet-ug-8f0aa192.jpg")
+    if not sample.exists():
+        sample = Path(__file__).resolve().parent / "fixtures" / "gyana_roll_24001001.jpg"
+    config, fields = classify_sample_image(
+        load_image(sample),
+        custom_grid_layout("Sample", "sample-classify", 180, 4, "ABCD"),
+    )
+    by_key = {item["key"]: item for item in fields}
+    assert by_key["name"]["detected"] is True
+    assert by_key["roll"]["detected"] is True
+    assert by_key["answers"]["detected"] is True
+    assert by_key["timing"]["detected"] is True
+    assert 6 <= config["roll"]["cols"] <= 10
+    assert by_key["name"]["class"] == "Candidate Name"
+    assert by_key["roll"]["region"]
+
+
 def _pcb_layout(client: TestClient):
     cfg = gyana_vikash_180()
     cfg["slug"] = "test-pcb-180"
@@ -238,7 +259,7 @@ def test_student_import_and_exam_flow(tmp_path):
     assert preview_maps[0]["subject"] == "Physics"
     assert preview_maps[1]["end_q"] == 20
     keys = {item["key"] for item in created_layout.json()["analysis"]}
-    assert {"roll", "test_id", "test_no", "date", "answers"} <= keys
+    assert {"roll", "test_id", "test_no", "date", "answers", "timing"} <= keys
     mapped = client.post(
         f"/api/layouts/{created_layout.json()['id']}/field-map",
         json={"field_map": {"date": "exam_date", "test_id": "test_id", "test_no": "test_no"}},

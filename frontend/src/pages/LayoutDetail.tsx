@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
 import { EditButton, ViewButton } from "../components/ActionButtons";
 import FieldMapper from "../components/FieldMapper";
+import SampleFieldOverlay from "../components/SampleFieldOverlay";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
 import PageTitle from "../components/PageTitle";
 
@@ -99,7 +100,11 @@ export default function LayoutDetail() {
                 </ul>
               </div>
               {layout.has_sample ? (
-                <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
+                <SampleFieldOverlay
+                  src={`/api/layouts/${layout.id}/sample`}
+                  alt={`${layout.name} sample`}
+                  analysis={layout.analysis || []}
+                />
               ) : (
                 <p className="muted">No sample image on file.</p>
               )}

@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
 import { DeleteButton, EditLink, ViewLink } from "../components/ActionButtons";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
 import PageTitle from "../components/PageTitle";
 
 export default function Layouts() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Layout[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [err, setErr] = useState("");
@@ -51,11 +53,11 @@ export default function Layouts() {
     }))));
     data.append("sample", file);
     try {
-      await api.post("/api/layouts", data);
-      setMsg("Layout created.");
+      const created = await api.post("/api/layouts", data) as Layout;
+      setMsg("Layout created. Classifying fields from the sample OMR.");
       setForm({ ...form, name: "", description: "" });
       if (fileRef.current) fileRef.current.value = "";
-      load();
+      navigate(`/layouts/${created.id}`);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not create layout");
     }

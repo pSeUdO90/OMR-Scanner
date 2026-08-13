@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
-from ..omr.analyze import analyze_layout_config
+from ..omr.analyze import analyze_layout_config, classify_sample_image
 from ..omr.layouts import RETIRED_LAYOUT_SLUGS, custom_grid_layout, layout_preview
 from ..omr.processor import load_image
 from ..omr.sample_file import sample_to_image_bytes
@@ -112,6 +112,12 @@ async def create_layout(
         description=description,
         default_maps=_subject_maps_from_form(subject_maps, total_questions),
     )
+    sample_image = None
+    try:
+        sample_image = load_image(sample_path)
+        config, _ = classify_sample_image(sample_image, config)
+    except Exception:
+        sample_image = None
     row = OmrLayout(
         slug=slug,
         name=name,
@@ -126,7 +132,7 @@ async def create_layout(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _layout_out(row)
+    return _layout_out(row, with_image=True, image=sample_image)
 
 
 @router.put("/{layout_id}", response_model=LayoutOut)
@@ -147,6 +153,7 @@ async def update_layout(
     row.name = name
     row.description = description or row.description
     maps = _subject_maps_from_form(subject_maps, total_questions)
+    previous = json.loads(row.config_json)
     if not row.is_builtin:
         config = custom_grid_layout(
             name=name,
@@ -157,6 +164,9 @@ async def update_layout(
             description=description,
             default_maps=maps,
         )
+        for key in ("roll", "test_no", "test_id", "date", "name", "detected_answer_columns"):
+            if key in previous:
+                config[key] = previous[key]
         row.total_questions = config["total_questions"]
         row.options = config["options"]
         row.config_json = json.dumps(config)
@@ -166,16 +176,22 @@ async def update_layout(
         config["description"] = row.description
         config["default_maps"] = maps
         row.config_json = json.dumps(config)
+    sample_image = None
     if sample and sample.filename:
         raw = await sample.read()
         if raw:
             try:
                 row.sample_path = _store_sample(row.slug, sample.filename, raw)
+                sample_image = load_image(row.sample_path)
+                config, _ = classify_sample_image(sample_image, json.loads(row.config_json))
+                row.config_json = json.dumps(config)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
+            except Exception:
+                sample_image = None
     db.commit()
     db.refresh(row)
-    return _layout_out(row)
+    return _layout_out(row, with_image=True, image=sample_image)
 
 
 @router.post("/{layout_id}/field-map")
