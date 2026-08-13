@@ -4,14 +4,23 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from .database import Base, engine
+from sqlalchemy.exc import OperationalError
+
+from .database import Base, SessionLocal, engine
 from .routers import exams, layouts, students, subjects
 from .seed import seed_reference_data
-from .database import SessionLocal
 
-Base.metadata.create_all(bind=engine)
-with SessionLocal() as db:
-    seed_reference_data(db)
+def init_db() -> None:
+    try:
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    except OperationalError:
+        # Snapshot or previous run already created tables.
+        pass
+    with SessionLocal() as db:
+        seed_reference_data(db)
+
+
+init_db()
 
 app = FastAPI(title="Gyana OMR Reader", version="1.0.0")
 app.add_middleware(
