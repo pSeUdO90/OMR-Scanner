@@ -1,0 +1,10 @@
+{
+  "name": "OMR-Scanner",
+  "user": "ubuntu",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "install": "./scripts/cloud-agent-install.sh",
+  "terminals": []
+}
