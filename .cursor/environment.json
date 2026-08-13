@@ -1,4 +1,26 @@
 {
   "name": "OMR-Scanner",
-  "install": "./scripts/cloud-agent-install.sh"
+  "install": "./scripts/cloud-agent-install.sh",
+  "ports": [
+    {
+      "name": "Gyana Vikash OMR UI",
+      "port": 5173
+    },
+    {
+      "name": "OMR API",
+      "port": 8000
+    }
+  ],
+  "terminals": [
+    {
+      "name": "API",
+      "command": ".venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir backend",
+      "description": "FastAPI backend on port 8000"
+    },
+    {
+      "name": "UI",
+      "command": "npm --prefix frontend run dev -- --host 0.0.0.0 --port 5173",
+      "description": "Vite frontend on port 5173; open this port from Cursor desktop Agents Window Ports"
+    }
+  ]
 }
