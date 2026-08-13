@@ -65,6 +65,7 @@ export default function EvaluationPanel({
   const [students, setStudents] = useState<Student[]>([]);
   const [assigning, setAssigning] = useState<Record<number, number>>({});
   const [viewSheet, setViewSheet] = useState<Sheet | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setAnswers(exam.answer_key || {});
@@ -73,6 +74,10 @@ export default function EvaluationPanel({
 
   useEffect(() => {
     api.get("/api/students").then(setStudents);
+  }, []);
+
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
   }, []);
 
   const groups = useMemo(() => {
@@ -89,17 +94,30 @@ export default function EvaluationPanel({
   const matched = sheets.filter((s) => s.status !== "unmatched");
   const unmatched = sheets.filter((s) => s.status === "unmatched");
 
-  const saveKey = async () => {
+  const persistKey = async (next: Record<string, string>) => {
     setErr("");
     const payload: Record<string, string> = {};
     for (let q = 1; q <= total; q += 1) {
-      const letter = answers[String(q)];
+      const letter = next[String(q)];
       if (letter) payload[String(q)] = letter;
     }
     await api.put(`/api/exams/${id}/answer-key`, { answer_key: payload });
     setKeyString(Array.from({ length: total }, (_, i) => payload[String(i + 1)] || "").join(""));
-    setMsg(`Answer key saved (${Object.keys(payload).length} questions).`);
+    setMsg(`Answer key saved (${Object.keys(payload).length} questions). Sheets re-evaluated.`);
     onReload();
+  };
+
+  const saveKey = async () => persistKey(answers);
+
+  const selectOption = (question: number, letter: string) => {
+    const next = { ...answers, [String(question)]: letter };
+    setAnswers(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      persistKey(next).catch((error) => {
+        setErr(error instanceof Error ? error.message : "Could not save answer key");
+      });
+    }, 300);
   };
 
   return (
@@ -108,7 +126,7 @@ export default function EvaluationPanel({
         <summary className="answer-key-toolbar">
           <div>
             <h3>Answer key</h3>
-            <p className="muted">Tap A–D for each question. {filled}/{total} marked.</p>
+            <p className="muted">Tap A–D for each question. Sheets re-evaluate as soon as the key is saved. {filled}/{total} marked.</p>
           </div>
           <div className="row" style={{ flex: "0 0 auto" }} onClick={(e) => e.stopPropagation()}>
             <input
@@ -152,7 +170,7 @@ export default function EvaluationPanel({
                         key={letter}
                         type="button"
                         className={answers[String(q)] === letter ? "opt on" : "opt"}
-                        onClick={() => setAnswers({ ...answers, [String(q)]: letter })}
+                        onClick={() => selectOption(q, letter)}
                       >
                         {letter}
                       </button>
@@ -282,7 +300,7 @@ export default function EvaluationPanel({
       </div>
       <div className="card">
         <h3>Unmatched OMR sheets</h3>
-        <p className="muted">Scanned sheets whose roll number does not match a student assigned to this exam. Assign a student to move the file into Matched Sheets.</p>
+        <p className="muted">Scanned sheets whose roll number is not in the student list. Assign a student to move the file into Matched Sheets.</p>
         <table>
           <thead><tr><th>File</th><th>Detected roll</th><th>Assign student</th><th>R/W/L</th><th>Score</th><th>Reason</th></tr></thead>
           <tbody>

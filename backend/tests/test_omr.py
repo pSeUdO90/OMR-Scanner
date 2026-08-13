@@ -70,7 +70,9 @@ def test_student_import_and_exam_flow(tmp_path):
     with SessionLocal() as db:
         if not db.query(Student).filter(Student.roll_no == "2400100001").first():
             db.add(Student(roll_no="2400100001", name="Aarav Mishra", gender="M", class_name="12", section="A", session="2025-26"))
-            db.commit()
+        if not db.query(Student).filter(Student.roll_no == "8800112233").first():
+            db.add(Student(roll_no="8800112233", name="Other Class", gender="F", class_name="9", section="C", session="2024-25"))
+        db.commit()
 
     slugs = {item["slug"] for item in client.get("/api/layouts").json()}
     assert "gyana-vikash-180" not in slugs
@@ -150,6 +152,30 @@ def test_student_import_and_exam_flow(tmp_path):
     assert results["results"][0]["right"] == 180
     assert results["overall_rwl"]["right"] == 180
     assert results["results"][0]["score"] == 720
+    flipped = {str(q): "ABCD"[(q - 1) % 4] for q in range(1, 181)}
+    flipped["1"] = "B"
+    rescored = client.put(f"/api/exams/{exam_id}/answer-key", json={"answer_key": flipped})
+    assert rescored.status_code == 200, rescored.text
+    results = client.get(f"/api/exams/{exam_id}/results").json()
+    assert results["results"][0]["right"] == 179
+    assert results["results"][0]["wrong"] == 1
+    assert results["results"][0]["score"] == 715
+    restored = client.put(
+        f"/api/exams/{exam_id}/answer-key",
+        json={"answer_key": {str(q): "ABCD"[(q - 1) % 4] for q in range(1, 181)}},
+    )
+    assert restored.status_code == 200
+    results = client.get(f"/api/exams/{exam_id}/results").json()
+    assert results["results"][0]["right"] == 180
+    assert results["results"][0]["score"] == 720
+    other_sheet = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "8800112233"})
+    assert other_sheet.status_code == 200, other_sheet.text
+    other_id = other_sheet.json()["id"]
+    client.post(f"/api/exams/{exam_id}/evaluate")
+    other_row = next(row for row in client.get(f"/api/exams/{exam_id}/sheets").json() if row["id"] == other_id)
+    assert other_row["status"] == "evaluated"
+    assert other_row["student_name"] == "Other Class"
+    assert other_row["detected_roll"] == "8800112233"
     grace = client.put(f"/api/exams/{exam_id}/grace", json={"questions": "2, 3, 10-12"})
     assert grace.status_code == 200, grace.text
     assert grace.json()["grace_questions"] == [2, 3, 10, 11, 12]

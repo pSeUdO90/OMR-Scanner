@@ -311,6 +311,7 @@ async def upload_answer_key(exam_id: int, file: UploadFile = File(...), db: Sess
     if not key:
         raise HTTPException(400, "Could not read an answer key from that file")
     exam.answer_key_json = json.dumps(key)
+    rescore_stored_sheets(db, exam)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
 
@@ -323,6 +324,7 @@ def set_answer_key(exam_id: int, payload: AnswerKeyIn, db: Session = Depends(get
         letters = [ch.upper() for ch in payload.key_string if ch.upper() in "ABCD"]
         key = {str(i + 1): letter for i, letter in enumerate(letters)}
     exam.answer_key_json = json.dumps(key)
+    rescore_stored_sheets(db, exam)
     db.commit()
     return _exam_out(_load_exam(db, exam_id))
 

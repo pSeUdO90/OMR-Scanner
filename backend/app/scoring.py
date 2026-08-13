@@ -64,20 +64,14 @@ def bind_sheet_student(db: Session, exam: Exam, sheet: ExamSheet, detected_roll:
             sheet.error_message = ""
         return True
     student = db.query(Student).filter(Student.roll_no == roll).one_or_none() if roll else None
-    assigned_ids = {row.id for row in assigned_students(db, exam)}
-    if student and student.id in assigned_ids:
+    if student:
         sheet.student_id = student.id
         if scored:
             sheet.status = "evaluated"
             sheet.error_message = ""
         return True
-    sheet.student_id = student.id if student else None
-    if roll:
-        sheet.status = "unmatched"
-        sheet.error_message = (
-            "Student is not assigned to this exam" if student else "Roll number not found in student list"
-        )
-    elif scored:
+    sheet.student_id = None
+    if roll or scored:
         sheet.status = "unmatched"
         sheet.error_message = "Roll number not found in student list"
     return False
