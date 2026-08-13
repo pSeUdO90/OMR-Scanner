@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
-from app.main import app
+from app.main import app, _ensure_columns
 from app.models import Student
 from app.omr.generator import generate_sheet
 from app.omr.layouts import gyana_vikash_180
@@ -11,6 +11,7 @@ from app.seed import seed_reference_data
 
 def setup_module():
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
     with SessionLocal() as db:
         seed_reference_data(db)
 
@@ -60,6 +61,8 @@ def test_student_import_and_exam_flow(tmp_path):
             "wrong_marks": -1,
             "unattempted_marks": 0,
             "layout_id": gyana["id"],
+            "test_id": "NEET-01",
+            "test_no": "12",
             "subject_maps": [
                 {"subject_id": subjects["Physics"], "start_q": 1, "end_q": 45},
                 {"subject_id": subjects["Chemistry"], "start_q": 46, "end_q": 90},
@@ -70,6 +73,39 @@ def test_student_import_and_exam_flow(tmp_path):
     )
     assert exam.status_code == 200, exam.text
     exam_id = exam.json()["id"]
+    assert exam.json()["test_id"] == "NEET-01"
+    assert exam.json()["test_no"] == "12"
+    before = len(client.get("/api/exams").json())
+    edited = client.put(
+        f"/api/exams/{exam_id}",
+        json={
+            "name": "NEET Mock 1 (edited)",
+            "exam_date": "2026-08-13",
+            "exam_type": "NEET Mock",
+            "duration_minutes": 200,
+            "correct_marks": 4,
+            "wrong_marks": -1,
+            "unattempted_marks": 0,
+            "layout_id": gyana["id"],
+            "test_id": "NEET-01B",
+            "test_no": "13",
+            "subject_maps": [
+                {"subject_id": subjects["Physics"], "start_q": 1, "end_q": 45},
+                {"subject_id": subjects["Chemistry"], "start_q": 46, "end_q": 90},
+                {"subject_id": subjects["Biology"], "start_q": 91, "end_q": 180},
+            ],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["id"] == exam_id
+    assert edited.json()["duration_minutes"] == 200
+    assert edited.json()["test_id"] == "NEET-01B"
+    assert len(client.get("/api/exams").json()) == before
+    key_upload = client.post(
+        f"/api/exams/{exam_id}/answer-key/upload",
+        files={"file": ("key.txt", b"ABCD" * 45, "text/plain")},
+    )
+    assert key_upload.status_code == 200, key_upload.text
     sample = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "2400100001"})
     assert sample.status_code == 200, sample.text
     evaluated = client.post(f"/api/exams/{exam_id}/evaluate")
@@ -78,9 +114,72 @@ def test_student_import_and_exam_flow(tmp_path):
     assert results["appeared"] == 1
     assert results["results"][0]["right"] == 180
     assert results["overall_rwl"]["right"] == 180
+    assert results["results"][0]["score"] == 720
+    grace = client.put(f"/api/exams/{exam_id}/grace", json={"grace_marks": 5})
+    assert grace.status_code == 200, grace.text
+    assert grace.json()["grace_marks"] == 5
+    results = client.get(f"/api/exams/{exam_id}/results").json()
+    assert results["results"][0]["score"] == 725
+    assert results["results"][0]["right"] == 180
     published = client.post(f"/api/exams/{exam_id}/publish")
     assert published.status_code == 200
     csv_body = client.get(f"/api/exams/{exam_id}/results.csv")
     assert csv_body.status_code == 200
     assert b"Aarav Mishra" in csv_body.content
     assert b"Physics R" in csv_body.content
+    blocked = client.delete(f"/api/subjects/{subjects['Physics']}")
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == "Subject Associated with Exam. Cannot be Deleted"
+    free = client.post("/api/subjects", json={"name": "TempDeleteMe", "code": "TMP"})
+    assert free.status_code == 200
+    ok = client.delete(f"/api/subjects/{free.json()['id']}")
+    assert ok.status_code == 200
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (48, 48), (5, 26, 45)).save(buf, format="JPEG")
+    created_layout = client.post(
+        "/api/layouts",
+        data={"name": "Custom 20", "description": "Test", "total_questions": 20, "columns": 2, "options": "ABCD"},
+        files={"sample": ("sheet.jpg", buf.getvalue(), "image/jpeg")},
+    )
+    assert created_layout.status_code == 200, created_layout.text
+    assert created_layout.json()["has_sample"] is True
+    assert created_layout.json()["total_questions"] == 20
+    keys = {item["key"] for item in created_layout.json()["analysis"]}
+    assert {"roll", "test_id", "test_no", "date", "answers"} <= keys
+    mapped = client.post(
+        f"/api/layouts/{created_layout.json()['id']}/field-map",
+        json={"field_map": {"date": "exam_date", "test_id": "test_id", "test_no": "test_no"}},
+    )
+    assert mapped.status_code == 200
+    extra = client.post(
+        "/api/exams",
+        json={
+            "name": "Custom paper",
+            "exam_date": "2026-08-13",
+            "exam_type": "Unit Test",
+            "layout_id": created_layout.json()["id"],
+            "test_id": "C-1",
+            "test_no": "1",
+        },
+    )
+    assert extra.status_code == 200, extra.text
+    used_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
+    assert used_layout.status_code == 409
+    assert used_layout.json()["detail"] == "Layout Associated with Exam. Cannot be Deleted"
+    removed = client.delete(f"/api/exams/{extra.json()['id']}")
+    assert removed.status_code == 200
+    assert client.get(f"/api/exams/{extra.json()['id']}").status_code == 404
+    unused_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
+    assert unused_layout.status_code == 200
+    builtin_delete = client.delete(f"/api/layouts/{gyana['id']}")
+    assert builtin_delete.status_code == 409
+    student = next(s for s in client.get("/api/students").json() if s["roll_no"] == "2400100001")
+    history = client.get(f"/api/students/{student['id']}/results").json()
+    assert history["student"]["name"] == "Aarav Mishra"
+    neet = next(row for row in history["exams"] if row["exam_id"] == exam_id)
+    assert neet["right"] == 180
+    assert neet["overall_rwl"]["right"] == 180
+    assert neet["score"] == 725
+    assert neet["subjects"]

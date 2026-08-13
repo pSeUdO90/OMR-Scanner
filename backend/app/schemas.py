@@ -37,6 +37,9 @@ class LayoutOut(BaseModel):
     total_questions: int
     options: str
     is_builtin: bool
+    has_sample: bool = False
+    field_map: dict[str, str] = Field(default_factory=dict)
+    analysis: list[dict] = Field(default_factory=list)
     preview: dict | None = None
 
     model_config = {"from_attributes": True}
@@ -64,6 +67,9 @@ class ExamIn(BaseModel):
     wrong_marks: float = -1.0
     unattempted_marks: float = 0.0
     layout_id: int
+    test_id: str = ""
+    test_no: str = ""
+    grace_marks: float = 0.0
     subject_maps: list[SubjectMapIn] = Field(default_factory=list)
     answer_key: dict[str, str] = Field(default_factory=dict)
 
@@ -79,14 +85,25 @@ class ExamOut(BaseModel):
     unattempted_marks: float
     layout_id: int
     layout_name: str = ""
+    total_questions: int = 0
     status: str
     created_at: datetime
     subject_maps: list[SubjectMapOut] = []
     answer_key: dict[str, str] = {}
     sheet_count: int = 0
     evaluated_count: int = 0
+    has_sample: bool = False
+    test_id: str = ""
+    test_no: str = ""
+    grace_marks: float = 0.0
+    field_map: dict[str, str] = Field(default_factory=dict)
+    analysis: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class GraceIn(BaseModel):
+    grace_marks: float = 0.0
 
 
 class AnswerKeyIn(BaseModel):

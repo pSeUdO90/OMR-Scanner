@@ -51,6 +51,8 @@ class OmrLayout(Base):
     options: Mapped[str] = mapped_column(String(20), default="ABCD")
     config_json: Mapped[str] = mapped_column(Text)
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=True)
+    sample_path: Mapped[str] = mapped_column(String(500), default="")
+    field_map_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class Exam(Base):
@@ -66,6 +68,11 @@ class Exam(Base):
     unattempted_marks: Mapped[float] = mapped_column(Float, default=0.0)
     layout_id: Mapped[int] = mapped_column(ForeignKey("omr_layouts.id"))
     answer_key_json: Mapped[str] = mapped_column(Text, default="{}")
+    sample_path: Mapped[str] = mapped_column(String(500), default="")
+    test_id: Mapped[str] = mapped_column(String(40), default="")
+    test_no: Mapped[str] = mapped_column(String(40), default="")
+    field_map_json: Mapped[str] = mapped_column(Text, default="{}")
+    grace_marks: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 

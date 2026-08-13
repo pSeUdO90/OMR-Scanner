@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models import Student
+from ..models import Exam, ExamSheet, ExamSubjectMap, Student
 from ..schemas import StudentIn, StudentOut
+from ..scoring import rwl_bucket
 from ..xlsx_io import parse_students_xlsx, students_template_bytes
 
 router = APIRouter(prefix="/api/students", tags=["students"])
@@ -77,3 +78,67 @@ def import_students(file: UploadFile = File(...), db: Session = Depends(get_db))
             created += 1
     db.commit()
     return {"created": created, "updated": updated, "total": created + updated}
+
+
+@router.get("/{student_id}", response_model=StudentOut)
+def get_student(student_id: int, db: Session = Depends(get_db)):
+    student = db.get(Student, student_id)
+    if not student:
+        raise HTTPException(404, "Student not found")
+    return student
+
+
+@router.get("/{student_id}/results")
+def student_results(student_id: int, db: Session = Depends(get_db)):
+    student = (
+        db.query(Student)
+        .options(
+            joinedload(Student.sheets).joinedload(ExamSheet.exam).joinedload(Exam.layout),
+            joinedload(Student.sheets).joinedload(ExamSheet.exam).joinedload(Exam.subject_maps).joinedload(ExamSubjectMap.subject),
+            joinedload(Student.sheets).joinedload(ExamSheet.question_results),
+        )
+        .filter(Student.id == student_id)
+        .one_or_none()
+    )
+    if not student:
+        raise HTTPException(404, "Student not found")
+    history = []
+    for sheet in student.sheets:
+        if sheet.status not in ("evaluated", "unmatched"):
+            continue
+        exam = sheet.exam
+        qrows = sheet.question_results
+        subjects = []
+        for mapping in sorted(exam.subject_maps, key=lambda m: m.start_q):
+            subset = [r for r in qrows if mapping.start_q <= r.question_no <= mapping.end_q]
+            subjects.append(
+                rwl_bucket(subset, exam, mapping.subject.name, mapping.subject_id, mapping.start_q, mapping.end_q)
+            )
+        total_q = exam.layout.total_questions if exam.layout else len(qrows)
+        overall = rwl_bucket(qrows, exam, "Overall", None, 1, total_q)
+        pct = (sheet.raw_score / sheet.max_score * 100) if sheet.max_score else 0
+        history.append(
+            {
+                "exam_id": exam.id,
+                "exam_name": exam.name,
+                "exam_date": str(exam.exam_date),
+                "exam_type": exam.exam_type,
+                "test_id": getattr(exam, "test_id", "") or "",
+                "test_no": getattr(exam, "test_no", "") or "",
+                "status": exam.status,
+                "right": sheet.right_count,
+                "wrong": sheet.wrong_count,
+                "left": sheet.left_count,
+                "invalid": sheet.invalid_count,
+                "score": sheet.raw_score,
+                "max_score": sheet.max_score,
+                "percentage": round(pct, 2),
+                "overall_rwl": overall,
+                "subjects": subjects,
+            }
+        )
+    history.sort(key=lambda row: row["exam_date"], reverse=True)
+    return {
+        "student": StudentOut.model_validate(student).model_dump(),
+        "exams": history,
+    }

@@ -1,10 +1,13 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
+import StudentView from "./pages/StudentView";
 import Subjects from "./pages/Subjects";
 import Layouts from "./pages/Layouts";
+import LayoutDetail from "./pages/LayoutDetail";
 import Exams from "./pages/Exams";
 import ExamDetail from "./pages/ExamDetail";
+import Evaluation from "./pages/Evaluation";
 import Results from "./pages/Results";
 
 export default function App() {
@@ -18,16 +21,20 @@ export default function App() {
         <NavLink to="/subjects">Subjects</NavLink>
         <NavLink to="/layouts">OMR layouts</NavLink>
         <NavLink to="/exams">Exams</NavLink>
+        <NavLink to="/evaluation">Evaluation</NavLink>
       </nav>
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/students" element={<Students />} />
+          <Route path="/students/:id" element={<StudentView />} />
           <Route path="/subjects" element={<Subjects />} />
           <Route path="/layouts" element={<Layouts />} />
+          <Route path="/layouts/:id" element={<LayoutDetail />} />
           <Route path="/exams" element={<Exams />} />
           <Route path="/exams/:id" element={<ExamDetail />} />
           <Route path="/exams/:id/results" element={<Results />} />
+          <Route path="/evaluation" element={<Evaluation />} />
         </Routes>
       </main>
     </div>
