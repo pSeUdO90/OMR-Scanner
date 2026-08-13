@@ -65,10 +65,22 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
     sheet.wrong_count = wrong
     sheet.left_count = left
     sheet.invalid_count = invalid
-    sheet.raw_score = round(score, 2)
+    sheet.raw_score = round(score + (getattr(exam, "grace_marks", 0) or 0), 2)
     sheet.max_score = round(max_score, 2)
     sheet.status = "evaluated" if student else "unmatched"
     sheet.error_message = "" if student else "Roll number not found in student list"
+
+
+def apply_grace_to_sheet(exam: Exam, sheet: ExamSheet) -> None:
+    if sheet.status not in ("evaluated", "unmatched"):
+        return
+    base = (
+        sheet.right_count * exam.correct_marks
+        + sheet.wrong_count * exam.wrong_marks
+        + sheet.left_count * exam.unattempted_marks
+        + sheet.invalid_count * exam.wrong_marks
+    )
+    sheet.raw_score = round(base + (getattr(exam, "grace_marks", 0) or 0), 2)
 
 
 def rwl_bucket(rows: list[SheetQuestionResult], exam: Exam, name: str, subject_id, start_q: int, end_q: int) -> dict:

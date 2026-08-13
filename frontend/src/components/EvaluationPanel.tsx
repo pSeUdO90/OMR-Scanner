@@ -37,10 +37,12 @@ export default function EvaluationPanel({
   const id = exam.id;
   const total = exam.total_questions || 40;
   const [answers, setAnswers] = useState<Record<string, string>>(exam.answer_key || {});
+  const [grace, setGrace] = useState(exam.grace_marks ?? 0);
 
   useEffect(() => {
     setAnswers(exam.answer_key || {});
-  }, [exam.id, exam.answer_key]);
+    setGrace(exam.grace_marks ?? 0);
+  }, [exam.id, exam.answer_key, exam.grace_marks]);
 
   const saveKey = async () => {
     setErr("");
@@ -143,6 +145,36 @@ export default function EvaluationPanel({
           setMsg("Generated sheet added to the scan queue.");
           onReload();
         }}>Generate filled practice sheet</button>
+      </div>
+      <div className="card">
+        <h3>Grace marks</h3>
+        <p className="muted">Added to every evaluated sheet’s score. RWL counts stay the same.</p>
+        <div className="row">
+          <label>Grace marks
+            <input
+              type="number"
+              step="0.5"
+              value={grace}
+              onChange={(e) => setGrace(Number(e.target.value))}
+            />
+          </label>
+          <button
+            type="button"
+            className="secondary"
+            onClick={async () => {
+              setErr("");
+              try {
+                await api.put(`/api/exams/${id}/grace`, { grace_marks: grace });
+                setMsg(`Grace marks set to ${grace}.`);
+                onReload();
+              } catch (error) {
+                setErr(error instanceof Error ? error.message : "Could not save grace marks");
+              }
+            }}
+          >
+            Save grace marks
+          </button>
+        </div>
       </div>
       <div className="card">
         <button onClick={async () => {

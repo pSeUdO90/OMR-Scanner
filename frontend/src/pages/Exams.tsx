@@ -89,6 +89,22 @@ export default function Exams() {
                   <Link to={`/exams/${exam.id}?tab=edit`}>Edit</Link>
                   {" · "}
                   <Link to={`/exams/${exam.id}?tab=evaluation`}>Evaluate</Link>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={async () => {
+                      if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
+                      try {
+                        await api.del(`/api/exams/${exam.id}`);
+                        setExams(await api.get("/api/exams"));
+                      } catch (error) {
+                        setErr(error instanceof Error ? error.message : "Could not delete exam");
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}

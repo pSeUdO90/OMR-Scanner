@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, Exam, Layout, Subject } from "../api";
 import ExamForm, { ExamFormState, examToForm } from "../components/ExamForm";
 import EvaluationPanel from "../components/EvaluationPanel";
@@ -21,6 +21,7 @@ type Sheet = {
 
 export default function ExamDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") || "overview";
   const [exam, setExam] = useState<Exam | null>(null);
@@ -92,6 +93,21 @@ export default function ExamDetail() {
         <button type="button" className={tab === "edit" ? "active" : ""} onClick={() => setTab("edit")}>Edit exam</button>
         <button type="button" className={tab === "evaluation" ? "active" : ""} onClick={() => setTab("evaluation")}>Evaluation</button>
         <Link className={tab === "results" ? "btn active" : "btn"} to={`/exams/${id}/results`}>Results</Link>
+        <button
+          type="button"
+          className="ghost"
+          onClick={async () => {
+            if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
+            try {
+              await api.del(`/api/exams/${id}`);
+              navigate("/exams");
+            } catch (error) {
+              setErr(error instanceof Error ? error.message : "Could not delete exam");
+            }
+          }}
+        >
+          Delete exam
+        </button>
       </div>
 
       {tab === "overview" && (

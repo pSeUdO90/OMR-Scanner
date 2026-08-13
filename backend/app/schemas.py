@@ -69,6 +69,7 @@ class ExamIn(BaseModel):
     layout_id: int
     test_id: str = ""
     test_no: str = ""
+    grace_marks: float = 0.0
     subject_maps: list[SubjectMapIn] = Field(default_factory=list)
     answer_key: dict[str, str] = Field(default_factory=dict)
 
@@ -94,10 +95,15 @@ class ExamOut(BaseModel):
     has_sample: bool = False
     test_id: str = ""
     test_no: str = ""
+    grace_marks: float = 0.0
     field_map: dict[str, str] = Field(default_factory=dict)
     analysis: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class GraceIn(BaseModel):
+    grace_marks: float = 0.0
 
 
 class AnswerKeyIn(BaseModel):

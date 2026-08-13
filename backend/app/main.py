@@ -28,6 +28,8 @@ def _ensure_columns() -> None:
             conn.execute(text("ALTER TABLE exams ADD COLUMN test_no VARCHAR(40) DEFAULT ''"))
         if cols and "field_map_json" not in cols:
             conn.execute(text("ALTER TABLE exams ADD COLUMN field_map_json TEXT DEFAULT '{}'"))
+        if cols and "grace_marks" not in cols:
+            conn.execute(text("ALTER TABLE exams ADD COLUMN grace_marks FLOAT DEFAULT 0"))
 
 
 def init_db() -> None:

@@ -57,6 +57,22 @@ export default function Evaluation() {
         </label>
         {exam && <Link className="btn" to={`/exams/${exam.id}?tab=edit`}>Edit exam</Link>}
         {exam && <Link className="btn secondary" to={`/exams/${exam.id}/results`}>RWL results</Link>}
+        {exam && (
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
+              await api.del(`/api/exams/${exam.id}`);
+              const rows = await api.get("/api/exams");
+              setExams(rows);
+              setExam(null);
+              setExamId(rows[0]?.id || 0);
+            }}
+          >
+            Delete exam
+          </button>
+        )}
       </div>
       {exam ? (
         <EvaluationPanel exam={exam} sheets={sheets} keyString={keyString} setKeyString={setKeyString} onReload={() => loadExam(exam.id)} />

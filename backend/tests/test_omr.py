@@ -114,6 +114,13 @@ def test_student_import_and_exam_flow(tmp_path):
     assert results["appeared"] == 1
     assert results["results"][0]["right"] == 180
     assert results["overall_rwl"]["right"] == 180
+    assert results["results"][0]["score"] == 720
+    grace = client.put(f"/api/exams/{exam_id}/grace", json={"grace_marks": 5})
+    assert grace.status_code == 200, grace.text
+    assert grace.json()["grace_marks"] == 5
+    results = client.get(f"/api/exams/{exam_id}/results").json()
+    assert results["results"][0]["score"] == 725
+    assert results["results"][0]["right"] == 180
     published = client.post(f"/api/exams/{exam_id}/publish")
     assert published.status_code == 200
     csv_body = client.get(f"/api/exams/{exam_id}/results.csv")
@@ -161,11 +168,18 @@ def test_student_import_and_exam_flow(tmp_path):
     used_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
     assert used_layout.status_code == 409
     assert used_layout.json()["detail"] == "Layout Associated with Exam. Cannot be Deleted"
+    removed = client.delete(f"/api/exams/{extra.json()['id']}")
+    assert removed.status_code == 200
+    assert client.get(f"/api/exams/{extra.json()['id']}").status_code == 404
+    unused_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
+    assert unused_layout.status_code == 200
     builtin_delete = client.delete(f"/api/layouts/{gyana['id']}")
     assert builtin_delete.status_code == 409
     student = next(s for s in client.get("/api/students").json() if s["roll_no"] == "2400100001")
     history = client.get(f"/api/students/{student['id']}/results").json()
     assert history["student"]["name"] == "Aarav Mishra"
-    assert history["exams"][0]["right"] == 180
-    assert history["exams"][0]["overall_rwl"]["right"] == 180
-    assert history["exams"][0]["subjects"]
+    neet = next(row for row in history["exams"] if row["exam_id"] == exam_id)
+    assert neet["right"] == 180
+    assert neet["overall_rwl"]["right"] == 180
+    assert neet["score"] == 725
+    assert neet["subjects"]

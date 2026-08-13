@@ -72,6 +72,7 @@ class Exam(Base):
     test_id: Mapped[str] = mapped_column(String(40), default="")
     test_no: Mapped[str] = mapped_column(String(40), default="")
     field_map_json: Mapped[str] = mapped_column(Text, default="{}")
+    grace_marks: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
