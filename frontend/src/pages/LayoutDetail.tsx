@@ -4,6 +4,7 @@ import { api, Layout, Subject } from "../api";
 import { EditButton } from "../components/ActionButtons";
 import FieldMapper from "../components/FieldMapper";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
+import PageTitle from "../components/PageTitle";
 
 export default function LayoutDetail() {
   const { id } = useParams();
@@ -79,7 +80,7 @@ export default function LayoutDetail() {
   return (
     <>
       <p className="muted"><Link to="/layouts">← OMR layouts</Link></p>
-      <h2>{layout.name}</h2>
+      <PageTitle icon="layouts">{layout.name}</PageTitle>
       <div className="tabs">
         <button type="button" className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</button>
         <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>

@@ -25,12 +25,24 @@ def _fill_bubble(canvas: np.ndarray, nx: float, ny: float, nr: float, filled: bo
     cv2.circle(canvas, (cx, cy), r, color, thickness)
 
 
+def _fill_digit_grid(canvas: np.ndarray, grid: dict | None, value: str) -> None:
+    if not grid:
+        return
+    cols = int(grid.get("cols") or 0)
+    value = str(value or "").ljust(cols)[:cols]
+    for bubble in grid.get("bubbles") or []:
+        filled = cols and value[bubble["col"]] == bubble["digit"]
+        _fill_bubble(canvas, bubble["x"], bubble["y"], bubble["r"], filled)
+
+
 def generate_sheet(
     layout: dict,
     roll: str,
     answers: dict[int, str],
     *,
     student_name: str = "",
+    test_id: str = "",
+    test_no: str = "",
 ) -> np.ndarray:
     layout = clone_layout(layout)
     w, h = int(layout["page_width"]), int(layout["page_height"])
@@ -60,10 +72,9 @@ def generate_sheet(
             cv2.LINE_AA,
         )
 
-    roll = roll.ljust(layout["roll"]["cols"])[: layout["roll"]["cols"]]
-    for bubble in layout["roll"]["bubbles"]:
-        filled = roll[bubble["col"]] == bubble["digit"]
-        _fill_bubble(canvas, bubble["x"], bubble["y"], bubble["r"], filled)
+    _fill_digit_grid(canvas, layout.get("roll"), roll)
+    _fill_digit_grid(canvas, layout.get("test_id"), test_id)
+    _fill_digit_grid(canvas, layout.get("test_no"), test_no)
 
     for question in layout["questions"]:
         marked = answers.get(int(question["number"]), "")

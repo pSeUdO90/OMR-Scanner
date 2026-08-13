@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, Exam } from "../api";
 import { DeleteButton, EditLink } from "../components/ActionButtons";
 import EvaluationPanel from "../components/EvaluationPanel";
+import PageTitle from "../components/PageTitle";
 
 type Sheet = {
   id: number;
@@ -48,8 +49,9 @@ export default function Evaluation() {
 
   return (
     <>
-      <h2>Evaluation</h2>
-      <p className="muted">Choose an exam, upload the answer key, then upload scanned OMR sheets and evaluate.</p>
+      <PageTitle icon="evaluation" subtitle="Choose an exam, upload the answer key, then upload scanned OMR sheets and evaluate.">
+        Evaluation
+      </PageTitle>
       <div className="card row">
         <label>Exam
           <select value={examId} onChange={(e) => setExamId(Number(e.target.value))}>

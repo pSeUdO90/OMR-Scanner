@@ -3,16 +3,17 @@ from __future__ import annotations
 import csv
 import json
 import shutil
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import UPLOAD_DIR, get_db
-from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Subject
+from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Student, Subject
 from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
@@ -21,6 +22,27 @@ from ..schemas import AnswerKeyIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMa
 from ..scoring import build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
+
+
+def allocate_test_id(db: Session) -> str:
+    values = [row[0] for row in db.query(Exam.test_id).all() if row[0]]
+    highest = 0
+    for value in values:
+        digits = "".join(ch for ch in str(value) if ch.isdigit())
+        if digits:
+            highest = max(highest, int(digits))
+    return f"{highest + 1:04d}"
+
+
+def assigned_students(db: Session, exam: Exam) -> list[Student]:
+    query = db.query(Student)
+    if exam.class_name:
+        query = query.filter(Student.class_name == exam.class_name)
+    if exam.section:
+        query = query.filter(Student.section == exam.section)
+    if exam.batch:
+        query = query.filter(Student.session == exam.batch)
+    return query.order_by(Student.roll_no).all()
 
 
 def _exam_out(exam: Exam, *, with_analysis: bool = False) -> ExamOut:
@@ -103,6 +125,11 @@ def list_exams(db: Session = Depends(get_db)):
     return [_exam_out(exam) for exam in exams]
 
 
+@router.get("/next-test-id")
+def get_next_test_id(db: Session = Depends(get_db)):
+    return {"test_id": allocate_test_id(db)}
+
+
 @router.post("", response_model=ExamOut)
 def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
     layout = db.get(OmrLayout, payload.layout_id)
@@ -118,7 +145,7 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
         unattempted_marks=payload.unattempted_marks,
         layout_id=payload.layout_id,
         answer_key_json=json.dumps(payload.answer_key),
-        test_id=payload.test_id,
+        test_id=allocate_test_id(db),
         test_no=payload.test_no,
         class_name=payload.class_name,
         section=payload.section,
@@ -184,7 +211,6 @@ def update_exam(exam_id: int, payload: ExamIn, db: Session = Depends(get_db)):
     exam.wrong_marks = payload.wrong_marks
     exam.unattempted_marks = payload.unattempted_marks
     exam.layout_id = payload.layout_id
-    exam.test_id = payload.test_id
     exam.test_no = payload.test_no
     exam.class_name = payload.class_name
     exam.section = payload.section
@@ -469,7 +495,13 @@ def make_sample_sheet(
         parsed = {i + 1: letter for i, letter in enumerate(letters)}
     elif key:
         parsed = {int(k): v for k, v in key.items()}
-    image = generate_sheet(layout, roll, parsed)
+    image = generate_sheet(
+        layout,
+        roll,
+        parsed,
+        test_id=exam.test_id or "",
+        test_no=exam.test_no or "",
+    )
     dest = UPLOAD_DIR / f"exam-{exam.id}" / f"sample-{uuid4().hex}.png"
     save_image(dest, image)
     sheet = ExamSheet(exam_id=exam.id, filename=dest.name, stored_path=str(dest), status="uploaded")
@@ -477,3 +509,32 @@ def make_sample_sheet(
     db.commit()
     db.refresh(sheet)
     return _sheet_out(sheet)
+
+
+@router.get("/{exam_id}/prefilled-omr")
+def prefilled_omr_pdf(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    students = assigned_students(db, exam)
+    if not students:
+        raise HTTPException(400, "No students assigned to this exam. Set class, section, and batch from the student list.")
+    layout = parse_layout(exam.layout.config_json)
+    pages = []
+    for student in students:
+        image = generate_sheet(
+            layout,
+            student.roll_no,
+            {},
+            student_name=student.name,
+            test_id=exam.test_id or "",
+            test_no=exam.test_no or "",
+        )
+        rgb = image[:, :, ::-1]
+        pages.append(Image.fromarray(rgb))
+    buf = BytesIO()
+    pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:], resolution=120)
+    filename = f"{exam.name.replace(' ', '_')}_prefilled_omr.pdf"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, Student } from "../api";
+import PageTitle from "../components/PageTitle";
 
 type Rwl = {
   subject_name: string;
@@ -66,7 +67,9 @@ export default function StudentView() {
   return (
     <>
       <p className="muted"><Link to="/students">← Students</Link></p>
-      <h2>{student.name}</h2>
+      <PageTitle icon="students">
+        {student.name}
+      </PageTitle>
       <p className="muted">
         Roll {student.roll_no} · {student.gender} · Class {student.class_name}-{student.section} · {student.session}
       </p>

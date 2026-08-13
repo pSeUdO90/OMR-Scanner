@@ -16,6 +16,23 @@ def list_students(db: Session = Depends(get_db)):
     return db.query(Student).order_by(Student.roll_no).all()
 
 
+@router.get("/options")
+def student_field_options(db: Session = Depends(get_db)):
+    rows = db.query(Student).all()
+    return {
+        "classes": sorted({s.class_name for s in rows if s.class_name}),
+        "sections": sorted({s.section for s in rows if s.section}),
+        "batches": sorted({s.session for s in rows if s.session}),
+        "by_class": {
+            cls: {
+                "sections": sorted({s.section for s in rows if s.class_name == cls and s.section}),
+                "batches": sorted({s.session for s in rows if s.class_name == cls and s.session}),
+            }
+            for cls in sorted({s.class_name for s in rows if s.class_name})
+        },
+    }
+
+
 @router.post("", response_model=StudentOut)
 def create_student(payload: StudentIn, db: Session = Depends(get_db)):
     if db.query(Student).filter(Student.roll_no == payload.roll_no).first():

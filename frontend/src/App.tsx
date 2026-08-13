@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from "react-router-dom";
+import { NavIcon } from "./components/Icons";
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import StudentView from "./pages/StudentView";
@@ -16,12 +17,12 @@ export default function App() {
       <nav className="nav">
         <h1>Gyana OMR</h1>
         <p>Scan. Score. Publish RWL.</p>
-        <NavLink to="/" end>Dashboard</NavLink>
-        <NavLink to="/students">Students</NavLink>
-        <NavLink to="/subjects">Subjects</NavLink>
-        <NavLink to="/layouts">OMR layouts</NavLink>
-        <NavLink to="/exams">Exams</NavLink>
-        <NavLink to="/evaluation">Evaluation</NavLink>
+        <NavLink to="/" end><NavIcon name="dashboard" /> Dashboard</NavLink>
+        <NavLink to="/students"><NavIcon name="students" /> Students</NavLink>
+        <NavLink to="/subjects"><NavIcon name="subjects" /> Subjects</NavLink>
+        <NavLink to="/layouts"><NavIcon name="layouts" /> OMR layouts</NavLink>
+        <NavLink to="/exams"><NavIcon name="exams" /> Exams</NavLink>
+        <NavLink to="/evaluation"><NavIcon name="evaluation" /> Evaluation</NavLink>
       </nav>
       <main className="main">
         <Routes>

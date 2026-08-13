@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
 import { DeleteButton, EditLink } from "../components/ActionButtons";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
+import PageTitle from "../components/PageTitle";
 
 export default function Layouts() {
   const [rows, setRows] = useState<Layout[]>([]);
@@ -74,8 +75,9 @@ export default function Layouts() {
 
   return (
     <>
-      <h2>OMR layouts</h2>
-      <p className="muted">Create a layout from a printed sample, then map subjects to question ranges.</p>
+      <PageTitle icon="layouts" subtitle="Create a layout from a printed sample, then map subjects to question ranges.">
+        OMR layouts
+      </PageTitle>
       <form className="card" onSubmit={onCreate}>
         <h3>Create a new layout</h3>
         <div className="row">

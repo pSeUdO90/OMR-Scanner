@@ -185,17 +185,14 @@ export default function EvaluationPanel({
             }
           }}
         />
-        <button type="button" onClick={() => scanRef.current?.click()}>Upload scanned OMR sheets</button>
+        <button type="button" onClick={() => scanRef.current?.click()}>
+          Upload scanned OMR sheets
+        </button>
         {" "}
-        <button className="secondary" type="button" onClick={async () => {
-          const roll = prompt("Roll number to bubble on a generated practice sheet", "2400100001");
-          if (!roll) return;
-          const data = new FormData();
-          data.append("roll", roll);
-          await api.post(`/api/exams/${id}/sample-sheet`, data);
-          setMsg("Generated sheet added to the scan queue.");
-          onReload();
-        }}>Generate filled practice sheet</button>
+        <a className="btn secondary" href={`/api/exams/${id}/prefilled-omr`}>
+          Generate Pre-Filled OMR
+        </a>
+        <p className="muted">Downloads a PDF with roll number, name, and Test ID filled for every student assigned to this exam (class, section, batch).</p>
       </div>
       <div className="card">
         <button onClick={async () => {

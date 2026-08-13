@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, Exam, Layout, Subject } from "../api";
+import { api, Exam, Layout, Student, Subject } from "../api";
 import { DeleteButton, EditButton } from "../components/ActionButtons";
 import ExamForm, { ExamFormState, examToForm } from "../components/ExamForm";
 import EvaluationPanel from "../components/EvaluationPanel";
+import PageTitle from "../components/PageTitle";
 
 type Sheet = {
   id: number;
@@ -29,20 +30,23 @@ export default function ExamDetail() {
   const [keyString, setKeyString] = useState("");
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [form, setForm] = useState<ExamFormState | null>(null);
   const [maps, setMaps] = useState<{ subject_id?: number; subject?: string; start_q: number; end_q: number }[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
   const load = async () => {
-    const [e, layoutRows, subjectRows] = await Promise.all([
+    const [e, layoutRows, subjectRows, studentRows] = await Promise.all([
       api.get(`/api/exams/${id}`),
       api.get("/api/layouts"),
       api.get("/api/subjects"),
+      api.get("/api/students"),
     ]);
     setExam(e);
     setLayouts(layoutRows);
     setSubjects(subjectRows);
+    setStudents(studentRows);
     setForm(examToForm(e));
     setMaps(e.subject_maps.map((m: Exam["subject_maps"][number]) => ({
       subject_id: m.subject_id,
@@ -85,7 +89,7 @@ export default function ExamDetail() {
 
   return (
     <>
-      <h2>{exam.name}</h2>
+      <PageTitle icon="exams">{exam.name}</PageTitle>
       <p className="muted">
         {exam.exam_type} · {exam.exam_date}
         {exam.class_name ? ` · Class ${exam.class_name}` : ""}
@@ -136,6 +140,7 @@ export default function ExamDetail() {
             setMaps={setMaps}
             layouts={layouts}
             subjects={subjects}
+            students={students}
             submitLabel="Save changes"
             onSubmit={onEdit}
             err={err}

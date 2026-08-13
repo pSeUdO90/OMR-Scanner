@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Student } from "../api";
 import { DeleteButton } from "../components/ActionButtons";
+import PageTitle from "../components/PageTitle";
 
 const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
 const labels: Record<string, string> = {
@@ -61,8 +62,9 @@ export default function Students() {
 
   return (
     <>
-      <h2>Student list</h2>
-      <p className="muted">Roll no, Student Name, Gender, Class, Section, Session. Use the upload button for an XLSX sheet.</p>
+      <PageTitle icon="students" subtitle="Roll no, Student Name, Gender, Class, Section, Session. Use the upload button for an XLSX sheet.">
+        Student list
+      </PageTitle>
       <div className="card">
         <div className="row">
           <a className="btn" href="/api/students/template.xlsx">Download XLSX template</a>

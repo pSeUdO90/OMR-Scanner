@@ -61,7 +61,6 @@ def test_student_import_and_exam_flow(tmp_path):
             "wrong_marks": -1,
             "unattempted_marks": 0,
             "layout_id": gyana["id"],
-            "test_id": "NEET-01",
             "test_no": "12",
             "class_name": "12",
             "section": "A",
@@ -76,8 +75,9 @@ def test_student_import_and_exam_flow(tmp_path):
     )
     assert exam.status_code == 200, exam.text
     exam_id = exam.json()["id"]
+    created_test_id = exam.json()["test_id"]
+    assert created_test_id.isdigit() and len(created_test_id) >= 4
     assert exam.json()["class_name"] == "12"
-    assert exam.json()["section"] == "A"
     assert exam.json()["batch"] == "2025-26"
     before = len(client.get("/api/exams").json())
     edited = client.put(
@@ -91,10 +91,9 @@ def test_student_import_and_exam_flow(tmp_path):
             "wrong_marks": -1,
             "unattempted_marks": 0,
             "layout_id": gyana["id"],
-            "test_id": "NEET-01B",
             "test_no": "13",
             "class_name": "12",
-            "section": "B",
+            "section": "A",
             "batch": "2025-26",
             "subject_maps": [
                 {"subject_id": subjects["Physics"], "start_q": 1, "end_q": 45},
@@ -107,7 +106,7 @@ def test_student_import_and_exam_flow(tmp_path):
     assert edited.json()["id"] == exam_id
     assert edited.json()["duration_minutes"] == 200
     assert edited.json()["name"] == "NEET Mock 1"
-    assert edited.json()["section"] == "B"
+    assert edited.json()["test_id"] == created_test_id
     assert len(client.get("/api/exams").json()) == before
     key_upload = client.post(
         f"/api/exams/{exam_id}/answer-key/upload",
@@ -187,6 +186,12 @@ def test_student_import_and_exam_flow(tmp_path):
         },
     )
     assert extra.status_code == 200, extra.text
+    assert extra.json()["test_id"] != created_test_id
+    pdf = client.get(f"/api/exams/{extra.json()['id']}/prefilled-omr")
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content[:4] == b"%PDF"
+    options = client.get("/api/students/options").json()
+    assert "classes" in options
     used_layout = client.delete(f"/api/layouts/{created_layout.json()['id']}")
     assert used_layout.status_code == 409
     assert used_layout.json()["detail"] == "Layout Associated with Exam. Cannot be Deleted"
