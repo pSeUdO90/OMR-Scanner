@@ -49,25 +49,37 @@ def test_real_gyana_scan_reads_eight_digit_roll():
     assert result["roll"] == "24001001"
 
 
-def test_sample_omr_classifies_fields():
-    from app.omr.analyze import classify_sample_image
-    from app.omr.layouts import custom_grid_layout
+def test_manual_blocks_drive_roll_reading():
+    from app.omr.layouts import apply_blocks_to_config, custom_grid_layout, digit_grid_from_box
 
-    sample = Path("/workspace/backend/uploads/layouts/neet-ug-8f0aa192.jpg")
-    if not sample.exists():
-        sample = Path(__file__).resolve().parent / "fixtures" / "gyana_roll_24001001.jpg"
-    config, fields = classify_sample_image(
-        load_image(sample),
-        custom_grid_layout("Sample", "sample-classify", 180, 4, "ABCD"),
+    path = Path(__file__).resolve().parent / "fixtures" / "gyana_roll_24001001.jpg"
+    layout = gyana_vikash_180()
+    ox, oy, pitch_x, pitch_y = 0.778, 0.3173, 0.025, 0.0138
+    box = {
+        "kind": "roll",
+        "cols": 8,
+        "x0": ox - pitch_x / 2,
+        "y0": oy - pitch_y / 2,
+        "x1": ox + 7 * pitch_x + pitch_x / 2,
+        "y1": oy + 9 * pitch_y + pitch_y / 2,
+    }
+    config = apply_blocks_to_config(layout, [box])
+    assert config["roll"]["cols"] == 8
+    result = evaluate_image(load_image(path), config)
+    assert result["roll"] == "24001001"
+    rebuilt = digit_grid_from_box(8, box["x0"], box["y0"], box["x1"], box["y1"])
+    assert rebuilt["cols"] == 8
+    custom = custom_grid_layout("Manual", "manual-blocks", 180, 4, "ABCD")
+    with_answers = apply_blocks_to_config(
+        custom,
+        [
+            box,
+            {"kind": "answers", "start_q": 1, "end_q": 45, "x0": 0.07, "y0": 0.455, "x1": 0.22, "y1": 0.90},
+        ],
     )
-    by_key = {item["key"]: item for item in fields}
-    assert by_key["name"]["detected"] is True
-    assert by_key["roll"]["detected"] is True
-    assert by_key["answers"]["detected"] is True
-    assert by_key["timing"]["detected"] is True
-    assert 6 <= config["roll"]["cols"] <= 10
-    assert by_key["name"]["class"] == "Candidate Name"
-    assert by_key["roll"]["region"]
+    assert with_answers["questions"][0]["number"] == 1
+    assert with_answers["questions"][-1]["number"] == 45
+    assert len(with_answers["questions"][0]["options"]) == 4
 
 
 def _pcb_layout(client: TestClient):
@@ -260,6 +272,22 @@ def test_student_import_and_exam_flow(tmp_path):
     assert preview_maps[1]["end_q"] == 20
     keys = {item["key"] for item in created_layout.json()["analysis"]}
     assert {"roll", "test_id", "test_no", "date", "answers", "timing"} <= keys
+    saved_blocks = client.post(
+        f"/api/layouts/{created_layout.json()['id']}/blocks",
+        json={
+            "blocks": [
+                {"kind": "roll", "cols": 8, "x0": 0.77, "y0": 0.31, "x1": 0.96, "y1": 0.45},
+                {"kind": "date", "cols": 6, "x0": 0.64, "y0": 0.35, "x1": 0.78, "y1": 0.45, "map_to": "exam_date"},
+                {"kind": "answers", "start_q": 1, "end_q": 20, "x0": 0.08, "y0": 0.45, "x1": 0.28, "y1": 0.90},
+            ]
+        },
+    )
+    assert saved_blocks.status_code == 200, saved_blocks.text
+    assert len(saved_blocks.json()["blocks"]) == 3
+    by_key = {item["key"]: item for item in saved_blocks.json()["analysis"]}
+    assert by_key["roll"]["detected"] is True
+    assert by_key["date"]["detected"] is True
+    assert by_key["answers"]["detected"] is True
     mapped = client.post(
         f"/api/layouts/{created_layout.json()['id']}/field-map",
         json={"field_map": {"date": "exam_date", "test_id": "test_id", "test_no": "test_no"}},

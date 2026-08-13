@@ -346,11 +346,76 @@ def classify_sample_image(image, config: dict | None = None) -> tuple[dict, list
     return config, fields
 
 
+def analysis_from_blocks(config: dict, image=None) -> list[dict]:
+    from .processor import align_sheet, read_digit_grid
+
+    blocks = config.get("blocks") or []
+    gray = None
+    if image is not None and config.get("page_width"):
+        try:
+            gray = align_sheet(image, config)
+        except Exception:
+            gray = None
+    by_kind: dict[str, list[dict]] = {}
+    for block in blocks:
+        by_kind.setdefault(block["kind"], []).append(block)
+
+    def field(kind: str, label: str, mappable: bool, extra: str) -> dict:
+        items = by_kind.get(kind) or []
+        detected = bool(items)
+        value = ""
+        region = None
+        detail = "Draw this block on the sample"
+        if items:
+            first = items[0]
+            region = {"x0": first["x0"], "y0": first["y0"], "x1": first["x1"], "y1": first["y1"]}
+            if kind == "answers":
+                detail = f"{len(items)} mapped column(s) · Q{min(b['start_q'] for b in items)}–Q{max(b['end_q'] for b in items)}"
+                region = {
+                    "x0": min(b["x0"] for b in items),
+                    "y0": min(b["y0"] for b in items),
+                    "x1": max(b["x1"] for b in items),
+                    "y1": max(b["y1"] for b in items),
+                }
+            elif kind == "name":
+                detail = f"{first.get('cols')}×{first.get('rows')} letter grid · {extra}"
+            else:
+                detail = f"{first.get('cols')}×{first.get('rows', 10)} bubble grid · {extra}"
+            if kind in ("roll", "test_no", "test_id", "date") and gray is not None and config.get(kind):
+                try:
+                    value = read_digit_grid(gray, config[kind])
+                except Exception:
+                    value = ""
+        return {
+            "key": kind,
+            "label": label,
+            "class": label,
+            "detected": detected,
+            "detail": detail,
+            "value": value,
+            "mappable": mappable,
+            "region": region,
+            "source": "manual",
+        }
+
+    return [
+        field("roll", "Roll No", False, "student identity"),
+        field("name", "Candidate Name", False, "A–Z letter grid"),
+        field("test_no", "Test No", True, "exam paper number"),
+        field("test_id", "Test ID", True, "unique test code"),
+        field("date", "Date", True, "DD/MM/YY"),
+        field("answers", "Answer bubbles", False, ""),
+    ]
+
+
 def analyze_layout_config(config: dict, image=None) -> list[dict]:
+    if config.get("blocks"):
+        return analysis_from_blocks(config, image)
     if image is not None:
         _, fields = classify_sample_image(image, config)
         return fields
     fields = []
+    mapped = bool(config.get("blocks"))
     for key, label, mappable in (
         ("roll", "Roll No", False),
         ("name", "Candidate Name", False),
@@ -364,21 +429,30 @@ def analyze_layout_config(config: dict, image=None) -> list[dict]:
                 "key": key,
                 "label": label,
                 "class": label,
-                "detected": bool(grid),
-                "detail": f"{grid.get('cols')} columns" if isinstance(grid, dict) and grid.get("cols") else ("Present" if grid else "Not classified yet — upload a sample OMR"),
+                "detected": mapped and bool(grid),
+                "detail": (
+                    f"{grid.get('cols')} columns"
+                    if mapped and isinstance(grid, dict) and grid.get("cols")
+                    else "Draw this block on the sample OMR"
+                ),
                 "value": "",
                 "mappable": mappable,
                 "region": None,
             }
         )
     nq = int(config.get("total_questions") or len(config.get("questions") or []))
+    answer_blocks = [b for b in (config.get("blocks") or []) if b.get("kind") == "answers"]
     fields.append(
         {
             "key": "answers",
             "label": "Answer bubbles",
             "class": "Answer bubbles",
-            "detected": nq > 0,
-            "detail": f"{nq} questions · options {config.get('options', 'ABCD')}",
+            "detected": bool(answer_blocks),
+            "detail": (
+                f"{len(answer_blocks)} mapped column(s) · {nq} questions · options {config.get('options', 'ABCD')}"
+                if answer_blocks
+                else "Draw each answer column on the sample OMR"
+            ),
             "value": str(nq),
             "mappable": False,
             "region": None,
@@ -390,7 +464,7 @@ def analyze_layout_config(config: dict, image=None) -> list[dict]:
             "label": "Timing marks",
             "class": "Timing marks",
             "detected": False,
-            "detail": "Upload a sample OMR to detect alignment bars",
+            "detail": "Optional — not required when blocks are mapped manually",
             "value": "",
             "mappable": False,
             "region": None,

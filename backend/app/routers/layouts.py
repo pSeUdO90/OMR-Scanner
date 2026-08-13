@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
-from ..omr.analyze import analyze_layout_config, classify_sample_image
-from ..omr.layouts import RETIRED_LAYOUT_SLUGS, custom_grid_layout, layout_preview
+from ..omr.analyze import analyze_layout_config, analysis_from_blocks
+from ..omr.layouts import RETIRED_LAYOUT_SLUGS, apply_blocks_to_config, custom_grid_layout, layout_preview
 from ..omr.processor import load_image
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import LayoutOut
@@ -24,13 +24,17 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
     item.preview = layout_preview(config)
     item.has_sample = bool(getattr(row, "sample_path", ""))
     item.field_map = json.loads(getattr(row, "field_map_json", None) or "{}")
+    item.blocks = config.get("blocks") or []
     img = image
     if img is None and with_image and item.has_sample and Path(row.sample_path).exists():
         try:
             img = load_image(row.sample_path)
         except Exception:
             img = None
-    item.analysis = analyze_layout_config(config, img)
+    if item.blocks:
+        item.analysis = analysis_from_blocks(config, img)
+    else:
+        item.analysis = analyze_layout_config(config, None)
     return item
 
 
@@ -115,7 +119,6 @@ async def create_layout(
     sample_image = None
     try:
         sample_image = load_image(sample_path)
-        config, _ = classify_sample_image(sample_image, config)
     except Exception:
         sample_image = None
     row = OmrLayout(
@@ -164,7 +167,7 @@ async def update_layout(
             description=description,
             default_maps=maps,
         )
-        for key in ("roll", "test_no", "test_id", "date", "name", "detected_answer_columns"):
+        for key in ("roll", "test_no", "test_id", "date", "name", "blocks", "questions"):
             if key in previous:
                 config[key] = previous[key]
         row.total_questions = config["total_questions"]
@@ -183,8 +186,6 @@ async def update_layout(
             try:
                 row.sample_path = _store_sample(row.slug, sample.filename, raw)
                 sample_image = load_image(row.sample_path)
-                config, _ = classify_sample_image(sample_image, json.loads(row.config_json))
-                row.config_json = json.dumps(config)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
             except Exception:
@@ -192,6 +193,31 @@ async def update_layout(
     db.commit()
     db.refresh(row)
     return _layout_out(row, with_image=True, image=sample_image)
+
+
+@router.post("/{layout_id}/blocks", response_model=LayoutOut)
+def save_layout_blocks(layout_id: int, payload: dict, db: Session = Depends(get_db)):
+    row = db.get(OmrLayout, layout_id)
+    if not row:
+        raise HTTPException(404, "Layout not found")
+    config = json.loads(row.config_json)
+    blocks = payload.get("blocks")
+    if not isinstance(blocks, list):
+        raise HTTPException(400, "blocks must be a list of mapped regions")
+    config = apply_blocks_to_config(config, blocks)
+    row.config_json = json.dumps(config)
+    row.total_questions = int(config.get("total_questions") or row.total_questions)
+    mapping = payload.get("field_map")
+    if mapping is None:
+        mapping = {
+            block["kind"]: block.get("map_to") or ""
+            for block in config.get("blocks") or []
+            if block["kind"] in ("date", "test_id", "test_no")
+        }
+    row.field_map_json = json.dumps(mapping)
+    db.commit()
+    db.refresh(row)
+    return _layout_out(row, with_image=True)
 
 
 @router.post("/{layout_id}/field-map")

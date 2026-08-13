@@ -54,10 +54,7 @@ export default function Layouts() {
     data.append("sample", file);
     try {
       const created = await api.post("/api/layouts", data) as Layout;
-      setMsg("Layout created. Classifying fields from the sample OMR.");
-      setForm({ ...form, name: "", description: "" });
-      if (fileRef.current) fileRef.current.value = "";
-      navigate(`/layouts/${created.id}`);
+      navigate(`/layouts/${created.id}?tab=map`);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not create layout");
     }
@@ -76,7 +73,7 @@ export default function Layouts() {
 
   return (
     <>
-      <PageTitle icon="layouts" subtitle="Create a layout from a printed sample, then map subjects to question ranges.">
+      <PageTitle icon="layouts" subtitle="Create a layout from a printed sample, then draw and map each data block on the sheet.">
         OMR layouts
       </PageTitle>
       <form className="card" onSubmit={onCreate}>
@@ -113,6 +110,7 @@ export default function Layouts() {
             )}
             <div className="actions">
               <ViewLink to={`/layouts/${layout.id}`}>View</ViewLink>
+              <EditLink to={`/layouts/${layout.id}?tab=map`}>Map blocks</EditLink>
               <EditLink to={`/layouts/${layout.id}?tab=edit`}>Edit</EditLink>
               <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
             </div>

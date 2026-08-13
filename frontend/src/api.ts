@@ -1,3 +1,8 @@
+import type { DataBlock } from "./blockKinds";
+
+export type { DataBlock };
+export { BLOCK_KINDS, FIELD_TARGETS } from "./blockKinds";
+
 const json = async (res: Response) => {
   const text = await res.text();
   let data: unknown = text;
@@ -63,6 +68,7 @@ export type Layout = {
   is_builtin?: boolean;
   has_sample?: boolean;
   field_map?: Record<string, string>;
+  blocks?: DataBlock[];
   analysis?: AnalysisField[];
   preview?: { default_maps: { subject: string; start_q: number; end_q: number }[] };
 };
@@ -94,10 +100,3 @@ export type Exam = {
   field_map?: Record<string, string>;
   analysis?: AnalysisField[];
 };
-
-export const FIELD_TARGETS = [
-  { value: "", label: "Ignore" },
-  { value: "exam_date", label: "Exam Date" },
-  { value: "test_id", label: "Test ID" },
-  { value: "test_no", label: "Test No" },
-];

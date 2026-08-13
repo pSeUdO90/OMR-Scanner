@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
 import { EditButton, ViewButton } from "../components/ActionButtons";
+import BlockEditor from "../components/BlockEditor";
 import FieldMapper from "../components/FieldMapper";
 import SampleFieldOverlay from "../components/SampleFieldOverlay";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
@@ -84,8 +85,18 @@ export default function LayoutDetail() {
       <PageTitle icon="layouts">{layout.name}</PageTitle>
       <div className="tabs">
         <ViewButton className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</ViewButton>
+        <ViewButton className={tab === "map" ? "active" : ""} onClick={() => setParams({ tab: "map" })}>Map blocks</ViewButton>
         <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
       </div>
+      {tab === "map" && (
+        <div className="card">
+          {layout.has_sample ? (
+            <BlockEditor layout={layout} onSaved={(next) => setLayout(next)} />
+          ) : (
+            <p className="muted">Upload a sample OMR on the Edit tab before mapping blocks.</p>
+          )}
+        </div>
+      )}
       {tab === "view" && (
         <>
           <div className="card">
@@ -119,6 +130,9 @@ export default function LayoutDetail() {
                 load();
               }}
             />
+            {layout.has_sample && !(layout.blocks || []).length && (
+              <p className="muted">Open <strong>Map blocks</strong> and draw each data region on the sample. Automatic detection is not used for reading.</p>
+            )}
           </div>
         </>
       )}

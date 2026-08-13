@@ -39,6 +39,7 @@ class LayoutOut(BaseModel):
     is_builtin: bool
     has_sample: bool = False
     field_map: dict[str, str] = Field(default_factory=dict)
+    blocks: list[dict] = Field(default_factory=list)
     analysis: list[dict] = Field(default_factory=list)
     preview: dict | None = None
 

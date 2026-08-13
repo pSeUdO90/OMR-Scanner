@@ -16,8 +16,8 @@ export default function FieldMapper({
   if (!analysis.length) return null;
   return (
     <div>
-      <h3>Classified fields from uploaded sample</h3>
-      <p className="muted">The sample OMR was analyzed and each bubble region was classified. Map Date, Test ID, and Test No to exam data if needed.</p>
+      <h3>Mapped OMR fields</h3>
+      <p className="muted">These classes come from blocks you drew on the sample. Map Date, Test ID, and Test No to exam data if needed.</p>
       <table>
         <thead>
           <tr>

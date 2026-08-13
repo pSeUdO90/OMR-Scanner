@@ -169,3 +169,156 @@ def layout_preview(layout: dict[str, Any]) -> dict[str, Any]:
 
 def clone_layout(layout: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(layout)
+
+
+DIGIT_KINDS = ("roll", "test_no", "test_id", "date")
+UNIQUE_KINDS = ("roll", "name", "test_no", "test_id", "date")
+BLOCK_LABELS = {
+    "roll": "Roll No",
+    "name": "Candidate Name",
+    "test_no": "Test No",
+    "test_id": "Test ID",
+    "date": "Date",
+    "answers": "Answer bubbles",
+}
+
+
+def _norm_box(block: dict[str, Any]) -> tuple[float, float, float, float]:
+    x0 = float(block["x0"])
+    y0 = float(block["y0"])
+    x1 = float(block["x1"])
+    y1 = float(block["y1"])
+    if x1 < x0:
+        x0, x1 = x1, x0
+    if y1 < y0:
+        y0, y1 = y1, y0
+    x0 = min(1.0, max(0.0, x0))
+    y0 = min(1.0, max(0.0, y0))
+    x1 = min(1.0, max(0.0, x1))
+    y1 = min(1.0, max(0.0, y1))
+    if x1 - x0 < 0.004:
+        x1 = min(1.0, x0 + 0.004)
+    if y1 - y0 < 0.004:
+        y1 = min(1.0, y0 + 0.004)
+    return x0, y0, x1, y1
+
+
+def digit_grid_from_box(cols: int, x0: float, y0: float, x1: float, y1: float, rows: int = 10) -> dict[str, Any]:
+    cols = max(1, int(cols))
+    rows = max(1, int(rows))
+    col_w = (x1 - x0) / cols
+    row_h = (y1 - y0) / rows
+    radius = min(col_w, row_h) * 0.32
+    bubbles = []
+    for c in range(cols):
+        for d in range(min(rows, 10)):
+            bubbles.append(
+                {
+                    "col": c,
+                    "digit": str(d),
+                    "x": x0 + (c + 0.5) * col_w,
+                    "y": y0 + (d + 0.5) * row_h,
+                    "r": radius,
+                }
+            )
+    return {"cols": cols, "bubbles": bubbles, "box": {"x0": x0, "y0": y0, "x1": x1, "y1": y1}}
+
+
+def questions_from_answer_box(
+    start_q: int,
+    end_q: int,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    options: str = "ABCD",
+) -> list[dict[str, Any]]:
+    start_q = max(1, int(start_q))
+    end_q = max(start_q, int(end_q))
+    letters = "".join(ch for ch in (options or "ABCD").upper() if ch in "ABCDEF") or "ABCD"
+    count = end_q - start_q + 1
+    nopt = len(letters)
+    row_h = (y1 - y0) / count
+    col_w = (x1 - x0) / nopt
+    radius = min(col_w, row_h) * 0.32
+    questions = []
+    for i, q in enumerate(range(start_q, end_q + 1)):
+        y = y0 + (i + 0.5) * row_h
+        opts = [
+            {"label": letter, "x": x0 + (j + 0.5) * col_w, "y": y, "r": radius}
+            for j, letter in enumerate(letters)
+        ]
+        questions.append({"number": q, "options": opts})
+    return questions
+
+
+def sanitize_blocks(raw: list | None, *, total_questions: int, options: str) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    seen_unique: set[str] = set()
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or item.get("key") or "").strip()
+        if kind not in BLOCK_LABELS:
+            continue
+        if kind in UNIQUE_KINDS and kind in seen_unique:
+            continue
+        if kind in UNIQUE_KINDS:
+            seen_unique.add(kind)
+        x0, y0, x1, y1 = _norm_box(item)
+        block: dict[str, Any] = {
+            "id": str(item.get("id") or f"{kind}-{len(blocks) + 1}"),
+            "kind": kind,
+            "label": BLOCK_LABELS[kind],
+            "x0": x0,
+            "y0": y0,
+            "x1": x1,
+            "y1": y1,
+            "map_to": str(item.get("map_to") or ""),
+        }
+        if kind in DIGIT_KINDS:
+            block["cols"] = max(1, min(16, int(item.get("cols") or (8 if kind == "roll" else 6 if kind == "date" else 3))))
+            block["rows"] = 10
+        elif kind == "name":
+            block["cols"] = max(1, min(40, int(item.get("cols") or 22)))
+            block["rows"] = max(10, min(30, int(item.get("rows") or 26)))
+        else:
+            start_q = int(item.get("start_q") or 1)
+            end_q = int(item.get("end_q") or total_questions)
+            block["start_q"] = max(1, start_q)
+            block["end_q"] = max(block["start_q"], min(total_questions, end_q))
+            block["options"] = options
+        if kind in ("test_no", "test_id", "date") and not block["map_to"]:
+            block["map_to"] = {"test_no": "test_no", "test_id": "test_id", "date": "exam_date"}[kind]
+        blocks.append(block)
+    return blocks
+
+
+def apply_blocks_to_config(config: dict[str, Any], blocks: list[dict[str, Any]]) -> dict[str, Any]:
+    config = deepcopy(config)
+    options = config.get("options") or "ABCD"
+    total_questions = int(config.get("total_questions") or 1)
+    clean = sanitize_blocks(blocks, total_questions=total_questions, options=options)
+    config["blocks"] = clean
+    for kind in DIGIT_KINDS:
+        config.pop(kind, None)
+    config.pop("name", None)
+    answer_questions: list[dict[str, Any]] = []
+    for block in clean:
+        kind = block["kind"]
+        x0, y0, x1, y1 = block["x0"], block["y0"], block["x1"], block["y1"]
+        if kind in DIGIT_KINDS:
+            config[kind] = digit_grid_from_box(block["cols"], x0, y0, x1, y1, block.get("rows") or 10)
+        elif kind == "name":
+            config["name"] = {k: block[k] for k in ("cols", "rows", "x0", "y0", "x1", "y1")}
+        elif kind == "answers":
+            answer_questions.extend(
+                questions_from_answer_box(block["start_q"], block["end_q"], x0, y0, x1, y1, options)
+            )
+    if answer_questions:
+        by_number: dict[int, dict[str, Any]] = {}
+        for question in answer_questions:
+            by_number[int(question["number"])] = question
+        config["questions"] = [by_number[n] for n in sorted(by_number)]
+        config["total_questions"] = max(int(config.get("total_questions") or 1), max(by_number))
+    return config
