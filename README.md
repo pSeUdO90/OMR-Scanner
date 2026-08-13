@@ -17,6 +17,12 @@ cd frontend && npm run dev
 
 Open http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 
+### Cursor Cloud Agent (website)
+
+The Cloud Agent VM is not a public website. Opening `http://localhost:5173` in laptop Chrome while using cursor.com returns **HTTP 401** (Cursor port-tunnel auth).
+
+Open the UI from the **Cursor desktop Agents Window → Ports (plug icon) → 5173**, or **Take control** on the agent page and browse `http://127.0.0.1:5173` inside the VM.
+
 ## Workflow
 
 1. **Students** — add rows or upload an XLSX (`Roll No`, `Student Name`, `Gender`, `Class`, `Section`, `Session`).
