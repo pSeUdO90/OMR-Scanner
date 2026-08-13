@@ -30,14 +30,6 @@ def _ensure_columns() -> None:
             conn.execute(text("ALTER TABLE exams ADD COLUMN field_map_json TEXT DEFAULT '{}'"))
         if cols and "grace_marks" not in cols:
             conn.execute(text("ALTER TABLE exams ADD COLUMN grace_marks FLOAT DEFAULT 0"))
-        if cols and "grace_questions_json" not in cols:
-            conn.execute(text("ALTER TABLE exams ADD COLUMN grace_questions_json TEXT DEFAULT '[]'"))
-        if cols and "class_name" not in cols:
-            conn.execute(text("ALTER TABLE exams ADD COLUMN class_name VARCHAR(40) DEFAULT ''"))
-        if cols and "section" not in cols:
-            conn.execute(text("ALTER TABLE exams ADD COLUMN section VARCHAR(20) DEFAULT ''"))
-        if cols and "batch" not in cols:
-            conn.execute(text("ALTER TABLE exams ADD COLUMN batch VARCHAR(40) DEFAULT ''"))
 
 
 def init_db() -> None:
@@ -52,7 +44,7 @@ def init_db() -> None:
 
 init_db()
 
-app = FastAPI(title="Gyana Vikash OMR", version="1.0.0")
+app = FastAPI(title="Gyana OMR Reader", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

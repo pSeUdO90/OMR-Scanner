@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Exam } from "../api";
-import { DeleteButton, EditLink } from "../components/ActionButtons";
 import EvaluationPanel from "../components/EvaluationPanel";
-import PageTitle from "../components/PageTitle";
 
 type Sheet = {
   id: number;
@@ -49,19 +47,20 @@ export default function Evaluation() {
 
   return (
     <>
-      <PageTitle icon="evaluation" subtitle="Choose an exam, upload the answer key, then upload scanned OMR sheets and evaluate.">
-        Evaluation
-      </PageTitle>
+      <h2>Evaluation</h2>
+      <p className="muted">Choose an exam, upload the answer key, then upload scanned OMR sheets and evaluate.</p>
       <div className="card row">
         <label>Exam
           <select value={examId} onChange={(e) => setExamId(Number(e.target.value))}>
             {exams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
-        {exam && <EditLink to={`/exams/${exam.id}?tab=edit`}>Edit</EditLink>}
+        {exam && <Link className="btn" to={`/exams/${exam.id}?tab=edit`}>Edit exam</Link>}
         {exam && <Link className="btn secondary" to={`/exams/${exam.id}/results`}>RWL results</Link>}
         {exam && (
-          <DeleteButton
+          <button
+            type="button"
+            className="ghost"
             onClick={async () => {
               if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
               await api.del(`/api/exams/${exam.id}`);
@@ -71,8 +70,8 @@ export default function Evaluation() {
               setExamId(rows[0]?.id || 0);
             }}
           >
-            Delete
-          </DeleteButton>
+            Delete exam
+          </button>
         )}
       </div>
       {exam ? (

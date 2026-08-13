@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, Exam } from "../api";
 
 type Sheet = {
@@ -37,24 +37,12 @@ export default function EvaluationPanel({
   const id = exam.id;
   const total = exam.total_questions || 40;
   const [answers, setAnswers] = useState<Record<string, string>>(exam.answer_key || {});
-  const [graceText, setGraceText] = useState((exam.grace_questions || []).join(", "));
+  const [grace, setGrace] = useState(exam.grace_marks ?? 0);
 
   useEffect(() => {
     setAnswers(exam.answer_key || {});
-    setGraceText((exam.grace_questions || []).join(", "));
-  }, [exam.id, exam.answer_key, exam.grace_questions]);
-
-  const groups = useMemo(() => {
-    if (exam.subject_maps?.length) {
-      return exam.subject_maps.map((m) => ({
-        title: m.subject_name,
-        questions: Array.from({ length: Math.max(0, m.end_q - m.start_q + 1) }, (_, i) => m.start_q + i),
-      }));
-    }
-    return [{ title: "All questions", questions: Array.from({ length: total }, (_, i) => i + 1) }];
-  }, [exam.subject_maps, total]);
-
-  const filled = Object.keys(answers).filter((k) => answers[k]).length;
+    setGrace(exam.grace_marks ?? 0);
+  }, [exam.id, exam.answer_key, exam.grace_marks]);
 
   const saveKey = async () => {
     setErr("");
@@ -71,94 +59,55 @@ export default function EvaluationPanel({
 
   return (
     <>
-      <div className="card answer-key-card">
-        <div className="answer-key-toolbar">
-          <div>
-            <h3>Answer key</h3>
-            <p className="muted">Tap A–D for each question. {filled}/{total} marked.</p>
-          </div>
-          <div className="row" style={{ flex: "0 0 auto" }}>
-            <input
-              ref={keyRef}
-              type="file"
-              accept="image/*,.txt,.csv"
-              hidden
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const data = new FormData();
-                data.append("file", file);
-                try {
-                  const updated = await api.post(`/api/exams/${id}/answer-key/upload`, data);
-                  const letters = Object.entries(updated.answer_key || {})
-                    .sort((a, b) => Number(a[0]) - Number(b[0]))
-                    .map(([, v]) => v)
-                    .join("");
-                  setKeyString(letters);
-                  setMsg(`Answer key uploaded (${letters.length} questions).`);
-                  onReload();
-                } catch (error) {
-                  setErr(error instanceof Error ? error.message : "Key upload failed");
-                }
-              }}
-            />
-            <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload key file</button>
-            <button type="button" onClick={saveKey}>Save answer key</button>
-          </div>
-        </div>
-        {groups.map((group) => (
-          <section className="key-block" key={group.title}>
-            <h4>{group.title}</h4>
-            <div className="key-grid">
-              {group.questions.map((q) => (
-                <div className="key-item" key={q}>
-                  <strong>Q{String(q).padStart(2, "0")}</strong>
-                  <div className="key-opts">
-                    {OPTIONS.map((letter) => (
-                      <button
-                        key={letter}
-                        type="button"
-                        className={answers[String(q)] === letter ? "opt on" : "opt"}
-                        onClick={() => setAnswers({ ...answers, [String(q)]: letter })}
-                      >
-                        {letter}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+      <div className="card">
+        <h3>Answer key</h3>
+        <p className="muted">Each question number is shown with options A–D. You can also upload a key file or filled key sheet.</p>
+        <div className="key-grid">
+          {Array.from({ length: total }, (_, i) => i + 1).map((q) => (
+            <div className="key-item" key={q}>
+              <strong>Q{String(q).padStart(2, "0")}</strong>
+              {OPTIONS.map((letter) => (
+                <label key={letter}>
+                  <input
+                    type="radio"
+                    name={`q-${q}`}
+                    checked={answers[String(q)] === letter}
+                    onChange={() => setAnswers({ ...answers, [String(q)]: letter })}
+                  />
+                  {letter}
+                </label>
               ))}
             </div>
-          </section>
-        ))}
-      </div>
-      <div className="card">
-        <h3>Grace questions</h3>
-        <p className="muted">Enter question numbers that receive grace (full marks). Use commas or ranges, for example 12, 18, 40-42.</p>
-        <label>
-          Question numbers
-          <input
-            value={graceText}
-            onChange={(e) => setGraceText(e.target.value)}
-            placeholder="e.g. 12, 18, 40-42"
-          />
-        </label>
+          ))}
+        </div>
         <p>
-          <button
-            type="button"
-            className="secondary"
-            onClick={async () => {
-              setErr("");
+          <button onClick={saveKey}>Save answer key</button>
+          {" "}
+          <input
+            ref={keyRef}
+            type="file"
+            accept="image/*,.txt,.csv"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const data = new FormData();
+              data.append("file", file);
               try {
-                await api.put(`/api/exams/${id}/grace`, { questions: graceText });
-                setMsg("Grace questions saved.");
+                const updated = await api.post(`/api/exams/${id}/answer-key/upload`, data);
+                const letters = Object.entries(updated.answer_key || {})
+                  .sort((a, b) => Number(a[0]) - Number(b[0]))
+                  .map(([, v]) => v)
+                  .join("");
+                setKeyString(letters);
+                setMsg(`Answer key uploaded (${letters.length} questions).`);
                 onReload();
               } catch (error) {
-                setErr(error instanceof Error ? error.message : "Could not save grace questions");
+                setErr(error instanceof Error ? error.message : "Key upload failed");
               }
             }}
-          >
-            Save grace questions
-          </button>
+          />
+          <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload answer key file</button>
         </p>
       </div>
       <div className="card">
@@ -185,14 +134,47 @@ export default function EvaluationPanel({
             }
           }}
         />
-        <button type="button" onClick={() => scanRef.current?.click()}>
-          Upload scanned OMR sheets
-        </button>
+        <button type="button" onClick={() => scanRef.current?.click()}>Upload scanned OMR sheets</button>
         {" "}
-        <a className="btn secondary" href={`/api/exams/${id}/prefilled-omr`}>
-          Generate Pre-Filled OMR
-        </a>
-        <p className="muted">Uses the OMR layout PDF/JPG attached to this exam. Student name, roll number, Test No, Test ID, and exam date are filled for every assigned student.</p>
+        <button className="secondary" type="button" onClick={async () => {
+          const roll = prompt("Roll number to bubble on a generated practice sheet", "2400100001");
+          if (!roll) return;
+          const data = new FormData();
+          data.append("roll", roll);
+          await api.post(`/api/exams/${id}/sample-sheet`, data);
+          setMsg("Generated sheet added to the scan queue.");
+          onReload();
+        }}>Generate filled practice sheet</button>
+      </div>
+      <div className="card">
+        <h3>Grace marks</h3>
+        <p className="muted">Added to every evaluated sheet’s score. RWL counts stay the same.</p>
+        <div className="row">
+          <label>Grace marks
+            <input
+              type="number"
+              step="0.5"
+              value={grace}
+              onChange={(e) => setGrace(Number(e.target.value))}
+            />
+          </label>
+          <button
+            type="button"
+            className="secondary"
+            onClick={async () => {
+              setErr("");
+              try {
+                await api.put(`/api/exams/${id}/grace`, { grace_marks: grace });
+                setMsg(`Grace marks set to ${grace}.`);
+                onReload();
+              } catch (error) {
+                setErr(error instanceof Error ? error.message : "Could not save grace marks");
+              }
+            }}
+          >
+            Save grace marks
+          </button>
+        </div>
       </div>
       <div className="card">
         <button onClick={async () => {
@@ -213,7 +195,7 @@ export default function EvaluationPanel({
         <table>
           <thead><tr><th>File</th><th>Roll</th><th>Student</th><th>R/W/L</th><th>Score</th><th>Status</th></tr></thead>
           <tbody>
-            {sheets.filter((s) => s.status !== "unmatched").map((s) => (
+            {sheets.map((s) => (
               <tr key={s.id}>
                 <td>{s.filename}</td>
                 <td>{s.detected_roll}</td>
@@ -225,27 +207,6 @@ export default function EvaluationPanel({
             ))}
           </tbody>
         </table>
-        {sheets.filter((s) => s.status !== "unmatched").length === 0 && <p className="muted">No matched sheets yet.</p>}
-      </div>
-      <div className="card">
-        <h3>Unmatched OMR sheets</h3>
-        <p className="muted">Scanned sheets whose roll number does not match a student assigned to this exam.</p>
-        <table>
-          <thead><tr><th>File</th><th>Detected roll</th><th>Matched student</th><th>R/W/L</th><th>Score</th><th>Reason</th></tr></thead>
-          <tbody>
-            {sheets.filter((s) => s.status === "unmatched").map((s) => (
-              <tr key={s.id}>
-                <td>{s.filename}</td>
-                <td>{s.detected_roll || "—"}</td>
-                <td>{s.student_name || "—"}</td>
-                <td><span className="pill R">{s.right_count}</span> <span className="pill W">{s.wrong_count}</span> <span className="pill L">{s.left_count}</span></td>
-                <td>{s.raw_score}/{s.max_score}</td>
-                <td>{s.error_message || "Not assigned to this exam"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {sheets.filter((s) => s.status === "unmatched").length === 0 && <p className="muted">No unmatched sheets.</p>}
       </div>
     </>
   );
