@@ -23,10 +23,13 @@ def _find_timing_marks(binary: np.ndarray, side: str) -> list[tuple[float, float
     marks: list[tuple[float, float]] = []
     for c in contours:
         x, y, cw, ch = cv2.boundingRect(c)
-        aspect = ch / max(cw, 1)
         area = cw * ch
-        if 1.15 < aspect < 10 and 15 < area < 8000 and ch < h * 0.05:
-            marks.append((x0 + x + cw / 2.0, y + ch / 2.0))
+        if 15 < area < 8000 and ch < h * 0.05:
+            aspect = ch / max(cw, 1)
+            wide_bar = 0.18 < aspect < 0.85 and cw >= 8
+            tall_bar = 1.15 < aspect < 12 and cw >= 3
+            if wide_bar or tall_bar:
+                marks.append((x0 + x + cw / 2.0, y + ch / 2.0))
     marks.sort(key=lambda p: p[1])
     return marks
 
@@ -40,8 +43,7 @@ def align_sheet(image: np.ndarray, layout: dict) -> np.ndarray:
     left = _find_timing_marks(binary, "left")
     right = _find_timing_marks(binary, "right")
     dst_w, dst_h = int(layout["page_width"]), int(layout["page_height"])
-    min_count = int(layout.get("timing_marks", {}).get("min_count", 8))
-    if len(left) >= min_count and len(right) >= min_count:
+    if len(left) >= 50 and len(right) >= 50:
         src = np.float32([left[0], right[0], right[-1], left[-1]])
         dst = np.float32([[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]])
         matrix = cv2.getPerspectiveTransform(src, dst)
@@ -104,6 +106,15 @@ def evaluate_image(image: np.ndarray, layout: dict) -> dict:
                 color = (40, 40, 220)
             cv2.circle(overlay, (cx, cy), r + 2, color, 1)
     roll = read_digit_grid(aligned, layout["roll"]) if layout.get("roll") else ""
+    if layout.get("roll"):
+        for bubble in layout["roll"].get("bubbles", []):
+            cx, cy = int(bubble["x"] * w), int(bubble["y"] * h)
+            r = max(3, int(bubble["r"] * min(w, h)))
+            digit = str(bubble.get("digit", ""))
+            col = int(bubble.get("col", 0))
+            marked = len(roll) > col and roll[col] == digit
+            color = (40, 180, 80) if marked else (180, 180, 180)
+            cv2.circle(overlay, (cx, cy), r + 1, color, 1)
     return {"roll": roll, "answers": answers, "overlay": overlay, "aligned": aligned}
 
 

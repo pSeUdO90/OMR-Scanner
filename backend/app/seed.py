@@ -5,7 +5,7 @@ import json
 from sqlalchemy.orm import Session
 
 from .models import Exam, OmrLayout, Subject
-from .omr.layouts import BUILTIN_LAYOUTS, RETIRED_LAYOUT_SLUGS
+from .omr.layouts import BUILTIN_LAYOUTS, RETIRED_LAYOUT_SLUGS, gyana_vikash_180
 
 
 def seed_reference_data(db: Session) -> None:
@@ -47,4 +47,15 @@ def seed_reference_data(db: Session) -> None:
                 is_builtin=True,
             )
         )
+    db.commit()
+
+    calibrated_roll = gyana_vikash_180()["roll"]
+    for row in db.query(OmrLayout).all():
+        cfg = json.loads(row.config_json or "{}")
+        if int(cfg.get("total_questions") or 0) != 180:
+            continue
+        if int((cfg.get("roll") or {}).get("cols") or 0) == 8:
+            continue
+        cfg["roll"] = calibrated_roll
+        row.config_json = json.dumps(cfg)
     db.commit()

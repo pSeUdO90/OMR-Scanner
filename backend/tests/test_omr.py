@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
@@ -5,7 +7,7 @@ from app.main import app, _ensure_columns
 from app.models import OmrLayout, Student
 from app.omr.generator import generate_sheet
 from app.omr.layouts import gyana_vikash_180
-from app.omr.processor import evaluate_image
+from app.omr.processor import evaluate_image, load_image, save_image
 from app.seed import seed_reference_data
 import json
 
@@ -20,9 +22,9 @@ def setup_module():
 def test_round_trip_gyana_layout():
     layout = gyana_vikash_180()
     answers = {q: "ABCD"[(q - 1) % 4] for q in range(1, 181)}
-    image = generate_sheet(layout, "2400100001", answers)
+    image = generate_sheet(layout, "24001001", answers)
     result = evaluate_image(image, layout)
-    assert result["roll"] == "2400100001"
+    assert result["roll"] == "24001001"
     assert result["answers"]["1"] == "A"
     assert result["answers"]["2"] == "B"
     assert result["answers"]["180"] == "D"
@@ -33,35 +35,44 @@ def test_round_trip_gyana_layout():
 def test_left_and_wrong_detection():
     layout = gyana_vikash_180()
     answers = {1: "A", 2: "C"}
-    image = generate_sheet(layout, "1234567890", answers)
+    image = generate_sheet(layout, "12345678", answers)
     result = evaluate_image(image, layout)
-    assert result["roll"] == "1234567890"
+    assert result["roll"] == "12345678"
     assert result["answers"]["1"] == "A"
     assert result["answers"]["2"] == "C"
     assert result["answers"]["3"] == ""
 
 
+def test_real_gyana_scan_reads_eight_digit_roll():
+    path = Path(__file__).resolve().parent / "fixtures" / "gyana_roll_24001001.jpg"
+    result = evaluate_image(load_image(path), gyana_vikash_180())
+    assert result["roll"] == "24001001"
+
+
 def _pcb_layout(client: TestClient):
-    layouts = client.get("/api/layouts").json()
-    existing = next((item for item in layouts if item["slug"] == "test-pcb-180"), None)
-    if existing:
-        return existing
     cfg = gyana_vikash_180()
     cfg["slug"] = "test-pcb-180"
     cfg["name"] = "Test PCB 180"
     with SessionLocal() as db:
-        row = OmrLayout(
-            slug="test-pcb-180",
-            name="Test PCB 180",
-            description="Test layout",
-            total_questions=180,
-            options="ABCD",
-            config_json=json.dumps(cfg),
-            is_builtin=False,
-        )
-        db.add(row)
-        db.commit()
-        layout_id = row.id
+        row = db.query(OmrLayout).filter(OmrLayout.slug == "test-pcb-180").one_or_none()
+        if row:
+            row.config_json = json.dumps(cfg)
+            row.total_questions = 180
+            db.commit()
+            layout_id = row.id
+        else:
+            row = OmrLayout(
+                slug="test-pcb-180",
+                name="Test PCB 180",
+                description="Test layout",
+                total_questions=180,
+                options="ABCD",
+                config_json=json.dumps(cfg),
+                is_builtin=False,
+            )
+            db.add(row)
+            db.commit()
+            layout_id = row.id
     return client.get(f"/api/layouts/{layout_id}").json()
 
 
@@ -70,8 +81,10 @@ def test_student_import_and_exam_flow(tmp_path):
     with SessionLocal() as db:
         if not db.query(Student).filter(Student.roll_no == "2400100001").first():
             db.add(Student(roll_no="2400100001", name="Aarav Mishra", gender="M", class_name="12", section="A", session="2025-26"))
-        if not db.query(Student).filter(Student.roll_no == "8800112233").first():
-            db.add(Student(roll_no="8800112233", name="Other Class", gender="F", class_name="9", section="C", session="2024-25"))
+        if not db.query(Student).filter(Student.roll_no == "24001001").first():
+            db.add(Student(roll_no="24001001", name="Aarav Mishra", gender="M", class_name="12", section="A", session="2025-26"))
+        if not db.query(Student).filter(Student.roll_no == "88001122").first():
+            db.add(Student(roll_no="88001122", name="Other Class", gender="F", class_name="9", section="C", session="2024-25"))
         db.commit()
 
     slugs = {item["slug"] for item in client.get("/api/layouts").json()}
@@ -143,7 +156,7 @@ def test_student_import_and_exam_flow(tmp_path):
         files={"file": ("key.txt", b"ABCD" * 45, "text/plain")},
     )
     assert key_upload.status_code == 200, key_upload.text
-    sample = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "2400100001"})
+    sample = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "24001001"})
     assert sample.status_code == 200, sample.text
     evaluated = client.post(f"/api/exams/{exam_id}/evaluate")
     assert evaluated.status_code == 200, evaluated.text
@@ -168,14 +181,14 @@ def test_student_import_and_exam_flow(tmp_path):
     results = client.get(f"/api/exams/{exam_id}/results").json()
     assert results["results"][0]["right"] == 180
     assert results["results"][0]["score"] == 720
-    other_sheet = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "8800112233"})
+    other_sheet = client.post(f"/api/exams/{exam_id}/sample-sheet", data={"roll": "88001122"})
     assert other_sheet.status_code == 200, other_sheet.text
     other_id = other_sheet.json()["id"]
     client.post(f"/api/exams/{exam_id}/evaluate")
     other_row = next(row for row in client.get(f"/api/exams/{exam_id}/sheets").json() if row["id"] == other_id)
     assert other_row["status"] == "evaluated"
     assert other_row["student_name"] == "Other Class"
-    assert other_row["detected_roll"] == "8800112233"
+    assert other_row["detected_roll"] == "88001122"
     grace = client.put(f"/api/exams/{exam_id}/grace", json={"questions": "2, 3, 10-12"})
     assert grace.status_code == 200, grace.text
     assert grace.json()["grace_questions"] == [2, 3, 10, 11, 12]
@@ -265,7 +278,7 @@ def test_student_import_and_exam_flow(tmp_path):
     skipped = client.post("/api/students/import?on_conflict=skip", files={"file": ("students.xlsx", xlsx)})
     assert skipped.status_code == 200, skipped.text
     assert skipped.json()["skipped"] >= 1
-    student = next(s for s in client.get("/api/students").json() if s["roll_no"] == "2400100001")
+    student = next(s for s in client.get("/api/students").json() if s["roll_no"] == "24001001")
     history = client.get(f"/api/students/{student['id']}/results").json()
     assert history["student"]["name"] == "Aarav Mishra"
     neet = next(row for row in history["exams"] if row["exam_id"] == exam_id)

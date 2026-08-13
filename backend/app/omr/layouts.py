@@ -43,7 +43,7 @@ def gyana_vikash_180() -> dict[str, Any]:
         "name": "Gyana Vikash 180 (PCB)",
         "description": (
             "A4 magenta OMR used by Gyana Vikash English Medium School, Berhampur. "
-            "Timing marks on both edges. Name grid (30×A–Z), 10-digit roll, "
+            "Timing marks on both edges. Name grid, 8-digit roll, "
             "Physics 01–45, Chemistry 46–90, Biology 91–180. Options A–D."
         ),
         "page_width": 1654,
@@ -51,7 +51,7 @@ def gyana_vikash_180() -> dict[str, Any]:
         "options": "ABCD",
         "total_questions": 180,
         "timing_marks": {"side_margin": 0.045, "min_count": 12},
-        "roll": _digit_grid(10, (0.64, 0.095), 0.026, 0.0145, 0.005),
+        "roll": _digit_grid(8, (0.778, 0.3173), 0.025, 0.0138, 0.0055),
         "test_no": _digit_grid(3, (0.64, 0.265), 0.026, 0.0145, 0.005),
         "test_id": _digit_grid(3, (0.74, 0.265), 0.026, 0.0145, 0.005),
         "date": _digit_grid(6, (0.64, 0.355), 0.026, 0.012, 0.0048),
