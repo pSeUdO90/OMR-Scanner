@@ -222,13 +222,26 @@ export default function A4SheetDesigner({
                 data-block-id={block.id}
               >
                 <span className="block-label">{block.label}</span>
-                {bubbleDots(block, options).slice(0, 800).map((dot, i) => (
-                  <i
-                    key={i}
-                    className="a4-bubble"
-                    style={{ left: `${((dot.x - block.x0) / Math.max(block.x1 - block.x0, 0.001)) * 100}%`, top: `${((dot.y - block.y0) / Math.max(block.y1 - block.y0, 0.001)) * 100}%` }}
-                  />
-                ))}
+                {bubbleDots(block, options).slice(0, 800).map((dot, i) => {
+                  const bw = Math.max(block.x1 - block.x0, 0.001);
+                  const bh = Math.max(block.y1 - block.y0, 0.001);
+                  const diamX = (4 / 210) / bw * 100;
+                  const diamY = (4 / 297) / bh * 100;
+                  return (
+                    <i
+                      key={i}
+                      className="a4-bubble"
+                      style={{
+                        left: `${((dot.x - block.x0) / bw) * 100}%`,
+                        top: `${((dot.y - block.y0) / bh) * 100}%`,
+                        width: `${diamX}%`,
+                        height: `${diamY}%`,
+                        marginLeft: `${-diamX / 2}%`,
+                        marginTop: `${-diamY / 2}%`,
+                      }}
+                    />
+                  );
+                })}
                 {selectedId === block.id && ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map((handle) => (
                   <i key={handle} className={`block-handle ${handle}`} data-handle={handle} data-block-id={block.id} />
                 ))}

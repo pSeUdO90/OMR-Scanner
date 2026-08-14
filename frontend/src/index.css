@@ -519,9 +519,6 @@ button.icon-btn img { display: block; width: 22px; height: 22px; }
 }
 .a4-bubble {
   position: absolute;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px 0 0 -2.5px;
   border: 1px solid #A60E35;
   border-radius: 50%;
   pointer-events: none;

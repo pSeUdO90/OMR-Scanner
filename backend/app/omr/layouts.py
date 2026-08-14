@@ -157,6 +157,12 @@ A4_WIDTH_PX = 1654
 A4_HEIGHT_PX = 2339
 A4_WIDTH_MM = 210
 A4_HEIGHT_MM = 297
+BUBBLE_DIAMETER_MM = 4.0
+
+
+def bubble_radius_norm(page_width_mm: float = A4_WIDTH_MM) -> float:
+    """Bubble radius as a fraction of page width (processor uses r_px = nr * min(w, h))."""
+    return (BUBBLE_DIAMETER_MM / 2.0) / float(page_width_mm or A4_WIDTH_MM)
 
 
 def predefined_a4_blocks(
@@ -238,6 +244,7 @@ def a4_design_layout(
         "total_questions": total_questions,
         "answer_columns": columns,
         "designed": True,
+        "bubble_diameter_mm": BUBBLE_DIAMETER_MM,
         "school_name": school_name,
         "timing_marks": {"side_margin": 0.045, "min_count": 12},
         "default_maps": default_maps
@@ -246,6 +253,8 @@ def a4_design_layout(
         "date_text": {"x": 0.63, "y": 0.062},
     }
     return apply_blocks_to_config(config, placed)
+
+
 BUILTIN_LAYOUTS: list[dict[str, Any]] = []
 RETIRED_LAYOUT_SLUGS = ("gyana-vikash-180", "standard-100", "jee-main-90")
 
@@ -298,12 +307,21 @@ def _norm_box(block: dict[str, Any]) -> tuple[float, float, float, float]:
     return x0, y0, x1, y1
 
 
-def digit_grid_from_box(cols: int, x0: float, y0: float, x1: float, y1: float, rows: int = 10) -> dict[str, Any]:
+def digit_grid_from_box(
+    cols: int,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    rows: int = 10,
+    radius: float | None = None,
+) -> dict[str, Any]:
     cols = max(1, int(cols))
     rows = max(1, int(rows))
     col_w = (x1 - x0) / cols
     row_h = (y1 - y0) / rows
-    radius = min(col_w, row_h) * 0.32
+    if radius is None:
+        radius = bubble_radius_norm()
     bubbles = []
     for c in range(cols):
         for d in range(min(rows, 10)):
@@ -319,13 +337,22 @@ def digit_grid_from_box(cols: int, x0: float, y0: float, x1: float, y1: float, r
     return {"cols": cols, "bubbles": bubbles, "box": {"x0": x0, "y0": y0, "x1": x1, "y1": y1}}
 
 
-def name_grid_from_box(cols: int, rows: int, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]:
+def name_grid_from_box(
+    cols: int,
+    rows: int,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    radius: float | None = None,
+) -> dict[str, Any]:
     cols = max(1, int(cols))
     rows = max(1, min(26, int(rows)))
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     col_w = (x1 - x0) / cols
     row_h = (y1 - y0) / rows
-    radius = min(col_w, row_h) * 0.32
+    if radius is None:
+        radius = bubble_radius_norm()
     bubbles = []
     for c in range(cols):
         for r in range(rows):
@@ -349,6 +376,7 @@ def questions_from_answer_box(
     x1: float,
     y1: float,
     options: str = "ABCD",
+    radius: float | None = None,
 ) -> list[dict[str, Any]]:
     start_q = max(1, int(start_q))
     end_q = max(start_q, int(end_q))
@@ -357,7 +385,8 @@ def questions_from_answer_box(
     nopt = len(letters)
     row_h = (y1 - y0) / count
     col_w = (x1 - x0) / nopt
-    radius = min(col_w, row_h) * 0.32
+    if radius is None:
+        radius = bubble_radius_norm()
     questions = []
     for i, q in enumerate(range(start_q, end_q + 1)):
         y = y0 + (i + 0.5) * row_h
@@ -417,6 +446,8 @@ def apply_blocks_to_config(config: dict[str, Any], blocks: list[dict[str, Any]])
     total_questions = int(config.get("total_questions") or 1)
     clean = sanitize_blocks(blocks, total_questions=total_questions, options=options)
     config["blocks"] = clean
+    config["bubble_diameter_mm"] = BUBBLE_DIAMETER_MM
+    radius = bubble_radius_norm(float(config.get("page_width_mm") or A4_WIDTH_MM))
     for kind in DIGIT_KINDS:
         config.pop(kind, None)
     config.pop("name", None)
@@ -425,15 +456,15 @@ def apply_blocks_to_config(config: dict[str, Any], blocks: list[dict[str, Any]])
         kind = block["kind"]
         x0, y0, x1, y1 = block["x0"], block["y0"], block["x1"], block["y1"]
         if kind in DIGIT_KINDS:
-            config[kind] = digit_grid_from_box(block["cols"], x0, y0, x1, y1, block.get("rows") or 10)
+            config[kind] = digit_grid_from_box(block["cols"], x0, y0, x1, y1, block.get("rows") or 10, radius=radius)
         elif kind == "name":
             config["name"] = {k: block[k] for k in ("cols", "rows", "x0", "y0", "x1", "y1")}
             config["name"]["bubbles"] = name_grid_from_box(
-                block["cols"], block["rows"], x0, y0, x1, y1
+                block["cols"], block["rows"], x0, y0, x1, y1, radius=radius
             )["bubbles"]
         elif kind == "answers":
             answer_questions.extend(
-                questions_from_answer_box(block["start_q"], block["end_q"], x0, y0, x1, y1, options)
+                questions_from_answer_box(block["start_q"], block["end_q"], x0, y0, x1, y1, options, radius=radius)
             )
     if answer_questions:
         by_number: dict[int, dict[str, Any]] = {}

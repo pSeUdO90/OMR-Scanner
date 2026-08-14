@@ -61,6 +61,10 @@ def test_a4_designed_sheet_round_trip():
     assert layout["page_height_mm"] == 297
     assert layout["designed"] is True
     assert layout["roll"]["cols"] == 8
+    radius = layout["roll"]["bubbles"][0]["r"]
+    diameter_mm = 2 * radius * layout["page_width_mm"]
+    assert abs(diameter_mm - 4.0) < 0.05
+    assert abs(layout["questions"][0]["options"][0]["r"] * 2 * layout["page_width_mm"] - 4.0) < 0.05
     image = generate_designed_sheet(layout, "24001001", {1: "A", 40: "D"})
     assert abs(image.shape[0] / image.shape[1] - 297 / 210) < 0.02
     result = evaluate_image(image, layout)
