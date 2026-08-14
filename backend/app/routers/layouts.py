@@ -1,19 +1,29 @@
 import json
 import re
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
 from ..omr.analyze import analyze_layout_config, analysis_from_blocks
-from ..omr.layouts import RETIRED_LAYOUT_SLUGS, apply_blocks_to_config, custom_grid_layout, layout_preview
-from ..omr.processor import load_image
+from ..omr.generator import generate_designed_sheet
+from ..omr.layouts import (
+    RETIRED_LAYOUT_SLUGS,
+    a4_design_layout,
+    apply_blocks_to_config,
+    custom_grid_layout,
+    layout_preview,
+    predefined_a4_blocks,
+)
+from ..omr.processor import load_image, save_image
 from ..omr.sample_file import sample_to_image_bytes
-from ..schemas import LayoutOut
+from ..schemas import LayoutDesignIn, LayoutOut
 
 router = APIRouter(prefix="/api/layouts", tags=["layouts"])
 
@@ -38,9 +48,84 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
     return item
 
 
+def _unique_slug(db: Session, name: str) -> str:
+    slug_base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "custom-layout"
+    slug = slug_base
+    n = 2
+    while db.query(OmrLayout).filter(OmrLayout.slug == slug).first():
+        slug = f"{slug_base}-{n}"
+        n += 1
+    return slug
+
+
+def _write_designed_sample(slug: str, config: dict) -> str:
+    image = generate_designed_sheet(config)
+    dest_dir = UPLOAD_DIR / "layouts"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stored = dest_dir / f"{slug}-a4-{uuid4().hex[:8]}.jpg"
+    save_image(stored, image)
+    return str(stored)
+
+
 @router.get("", response_model=list[LayoutOut])
 def list_layouts(db: Session = Depends(get_db)):
     return [_layout_out(row) for row in db.query(OmrLayout).filter(~OmrLayout.slug.in_(RETIRED_LAYOUT_SLUGS)).order_by(OmrLayout.id).all()]
+
+
+@router.get("/predefined-blocks")
+def get_predefined_blocks(total_questions: int = 100, columns: int = 4, options: str = "ABCD", roll_cols: int = 8):
+    return {
+        "page_width": 1654,
+        "page_height": 2339,
+        "page_width_mm": 210,
+        "page_height_mm": 297,
+        "blocks": predefined_a4_blocks(
+            total_questions=total_questions,
+            columns=columns,
+            options=options,
+            roll_cols=roll_cols,
+        ),
+    }
+
+
+@router.post("/design", response_model=LayoutOut)
+def create_designed_layout(payload: LayoutDesignIn, db: Session = Depends(get_db)):
+    slug = _unique_slug(db, payload.name)
+    options = "".join(ch for ch in payload.options.upper() if ch in "ABCDEF") or "ABCD"
+    maps = _subject_maps_from_form(json.dumps(payload.subject_maps), payload.total_questions)
+    config = a4_design_layout(
+        name=payload.name,
+        slug=slug,
+        total_questions=payload.total_questions,
+        columns=payload.columns,
+        options=options,
+        description=payload.description,
+        default_maps=maps,
+        roll_cols=payload.roll_cols,
+        blocks=payload.blocks,
+        school_name=payload.school_name,
+    )
+    sample_path = _write_designed_sample(slug, config)
+    mapping = {
+        block["kind"]: block.get("map_to") or ""
+        for block in config.get("blocks") or []
+        if block["kind"] in ("date", "test_id", "test_no")
+    }
+    row = OmrLayout(
+        slug=slug,
+        name=payload.name,
+        description=payload.description or config["description"],
+        total_questions=config["total_questions"],
+        options=config["options"],
+        config_json=json.dumps(config),
+        is_builtin=False,
+        sample_path=sample_path,
+        field_map_json=json.dumps(mapping or {"date": "exam_date", "test_id": "test_id", "test_no": "test_no"}),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _layout_out(row, with_image=True)
 
 
 @router.get("/{layout_id}", response_model=LayoutOut)
@@ -97,12 +182,7 @@ async def create_layout(
     raw = await sample.read()
     if not raw:
         raise HTTPException(400, "PDF/JPG of the sample OMR must be uploaded")
-    slug_base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "custom-layout"
-    slug = slug_base
-    n = 2
-    while db.query(OmrLayout).filter(OmrLayout.slug == slug).first():
-        slug = f"{slug_base}-{n}"
-        n += 1
+    slug = _unique_slug(db, name)
     try:
         sample_path = _store_sample(slug, sample.filename or "sample.jpg", raw)
     except ValueError as exc:
@@ -167,7 +247,7 @@ async def update_layout(
             description=description,
             default_maps=maps,
         )
-        for key in ("roll", "test_no", "test_id", "date", "name", "blocks", "questions"):
+        for key in ("roll", "test_no", "test_id", "date", "name", "blocks", "questions", "designed", "school_name", "page_width_mm", "page_height_mm", "answer_columns"):
             if key in previous:
                 config[key] = previous[key]
         row.total_questions = config["total_questions"]
@@ -215,6 +295,8 @@ def save_layout_blocks(layout_id: int, payload: dict, db: Session = Depends(get_
             if block["kind"] in ("date", "test_id", "test_no")
         }
     row.field_map_json = json.dumps(mapping)
+    if config.get("designed"):
+        row.sample_path = _write_designed_sample(row.slug, config)
     db.commit()
     db.refresh(row)
     return _layout_out(row, with_image=True)
@@ -250,3 +332,35 @@ def layout_sample(layout_id: int, db: Session = Depends(get_db)):
     if not row or not getattr(row, "sample_path", "") or not Path(row.sample_path).exists():
         raise HTTPException(404, "No sample OMR uploaded for this layout")
     return FileResponse(row.sample_path)
+
+
+def _blank_sheet_image(row: OmrLayout):
+    config = json.loads(row.config_json)
+    return generate_designed_sheet(config)
+
+
+@router.get("/{layout_id}/blank-sheet")
+def layout_blank_sheet(layout_id: int, db: Session = Depends(get_db)):
+    row = db.get(OmrLayout, layout_id)
+    if not row:
+        raise HTTPException(404, "Layout not found")
+    image = _blank_sheet_image(row)
+    dest = UPLOAD_DIR / "layouts" / f"{row.slug}-blank.jpg"
+    save_image(dest, image)
+    return FileResponse(dest, media_type="image/jpeg", filename=f"{row.slug}-a4-omr.jpg")
+
+
+@router.get("/{layout_id}/blank-sheet.pdf")
+def layout_blank_sheet_pdf(layout_id: int, db: Session = Depends(get_db)):
+    row = db.get(OmrLayout, layout_id)
+    if not row:
+        raise HTTPException(404, "Layout not found")
+    image = _blank_sheet_image(row)
+    rgb = image[:, :, ::-1]
+    buf = BytesIO()
+    Image.fromarray(rgb).save(buf, format="PDF", resolution=200)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{row.slug}-a4-omr.pdf"'},
+    )

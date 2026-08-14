@@ -29,6 +29,18 @@ class SubjectOut(SubjectIn):
     model_config = {"from_attributes": True}
 
 
+class LayoutDesignIn(BaseModel):
+    name: str
+    description: str = ""
+    total_questions: int = 100
+    columns: int = 4
+    options: str = "ABCD"
+    roll_cols: int = 8
+    subject_maps: list[dict] = Field(default_factory=list)
+    blocks: list[dict] | None = None
+    school_name: str = "GYANA VIKASH ENGLISH MEDIUM SCHOOL, BERHAMPUR"
+
+
 class LayoutOut(BaseModel):
     id: int
     slug: str

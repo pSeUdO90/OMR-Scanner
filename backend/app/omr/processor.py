@@ -36,13 +36,17 @@ def _find_timing_marks(binary: np.ndarray, side: str) -> list[tuple[float, float
 
 def align_sheet(image: np.ndarray, layout: dict) -> np.ndarray:
     gray = _to_gray(image)
+    dst_w, dst_h = int(layout["page_width"]), int(layout["page_height"])
+    if layout.get("designed"):
+        if gray.shape[1] == dst_w and gray.shape[0] == dst_h:
+            return gray
+        return cv2.resize(gray, (dst_w, dst_h))
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     binary = cv2.adaptiveThreshold(
         blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 8
     )
     left = _find_timing_marks(binary, "left")
     right = _find_timing_marks(binary, "right")
-    dst_w, dst_h = int(layout["page_width"]), int(layout["page_height"])
     if len(left) >= 50 and len(right) >= 50:
         src = np.float32([left[0], right[0], right[-1], left[-1]])
         dst = np.float32([[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]])

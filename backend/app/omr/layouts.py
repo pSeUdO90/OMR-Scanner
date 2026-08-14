@@ -153,6 +153,99 @@ def custom_grid_layout(
     }
 
 
+A4_WIDTH_PX = 1654
+A4_HEIGHT_PX = 2339
+A4_WIDTH_MM = 210
+A4_HEIGHT_MM = 297
+
+
+def predefined_a4_blocks(
+    *,
+    total_questions: int,
+    columns: int,
+    options: str = "ABCD",
+    roll_cols: int = 8,
+) -> list[dict[str, Any]]:
+    """Standard A4 Gyana Vikash-style block placement."""
+    total_questions = max(1, min(int(total_questions), 400))
+    columns = max(1, min(int(columns), 6))
+    roll_cols = max(4, min(int(roll_cols), 12))
+    options = "".join(ch for ch in (options or "ABCD").upper() if ch in "ABCDEF") or "ABCD"
+    per_col = (total_questions + columns - 1) // columns
+    blocks: list[dict[str, Any]] = [
+        {"id": "pre-name", "kind": "name", "cols": 22, "rows": 26, "x0": 0.07, "y0": 0.085, "x1": 0.60, "y1": 0.40},
+        {"id": "pre-roll", "kind": "roll", "cols": roll_cols, "rows": 10, "x0": 0.63, "y0": 0.085, "x1": 0.935, "y1": 0.255},
+        {"id": "pre-test-no", "kind": "test_no", "cols": 3, "rows": 10, "x0": 0.63, "y0": 0.275, "x1": 0.76, "y1": 0.40, "map_to": "test_no"},
+        {"id": "pre-test-id", "kind": "test_id", "cols": 4, "rows": 10, "x0": 0.775, "y0": 0.275, "x1": 0.935, "y1": 0.40, "map_to": "test_id"},
+        {"id": "pre-date", "kind": "date", "cols": 6, "rows": 10, "x0": 0.63, "y0": 0.42, "x1": 0.935, "y1": 0.545, "map_to": "exam_date"},
+    ]
+    left, right, top, bottom = 0.07, 0.935, 0.57, 0.945
+    gap = 0.012
+    width = (right - left - gap * (columns - 1)) / columns
+    q = 1
+    for i in range(columns):
+        end = min(q + per_col - 1, total_questions)
+        x0 = left + i * (width + gap)
+        blocks.append(
+            {
+                "id": f"pre-answers-{i + 1}",
+                "kind": "answers",
+                "start_q": q,
+                "end_q": end,
+                "x0": x0,
+                "y0": top,
+                "x1": x0 + width,
+                "y1": bottom,
+                "options": options,
+            }
+        )
+        q = end + 1
+        if q > total_questions:
+            break
+    return sanitize_blocks(blocks, total_questions=total_questions, options=options)
+
+
+def a4_design_layout(
+    name: str,
+    slug: str,
+    total_questions: int,
+    columns: int,
+    options: str = "ABCD",
+    description: str = "",
+    default_maps: list[dict[str, Any]] | None = None,
+    roll_cols: int = 8,
+    blocks: list[dict[str, Any]] | None = None,
+    school_name: str = "GYANA VIKASH ENGLISH MEDIUM SCHOOL, BERHAMPUR",
+) -> dict[str, Any]:
+    options = "".join(ch for ch in (options or "ABCD").upper() if ch in "ABCDEF") or "ABCD"
+    total_questions = max(1, min(int(total_questions), 400))
+    columns = max(1, min(int(columns), 6))
+    placed = blocks if blocks is not None else predefined_a4_blocks(
+        total_questions=total_questions,
+        columns=columns,
+        options=options,
+        roll_cols=roll_cols,
+    )
+    config = {
+        "slug": slug,
+        "name": name,
+        "description": description or f"A4 OMR design with {total_questions} questions.",
+        "page_width": A4_WIDTH_PX,
+        "page_height": A4_HEIGHT_PX,
+        "page_width_mm": A4_WIDTH_MM,
+        "page_height_mm": A4_HEIGHT_MM,
+        "options": options,
+        "total_questions": total_questions,
+        "answer_columns": columns,
+        "designed": True,
+        "school_name": school_name,
+        "timing_marks": {"side_margin": 0.045, "min_count": 12},
+        "default_maps": default_maps
+        or [{"subject": "Paper", "code": "PAP", "start_q": 1, "end_q": total_questions}],
+        "name_text": {"x": 0.07, "y": 0.062},
+        "date_text": {"x": 0.63, "y": 0.062},
+    }
+    return apply_blocks_to_config(config, placed)
 BUILTIN_LAYOUTS: list[dict[str, Any]] = []
 RETIRED_LAYOUT_SLUGS = ("gyana-vikash-180", "standard-100", "jee-main-90")
 
@@ -164,6 +257,8 @@ def layout_preview(layout: dict[str, Any]) -> dict[str, Any]:
         "options": layout["options"],
         "default_maps": layout.get("default_maps", []),
         "roll_cols": layout.get("roll", {}).get("cols", 0),
+        "designed": bool(layout.get("designed")),
+        "page": "A4",
     }
 
 
@@ -222,6 +317,28 @@ def digit_grid_from_box(cols: int, x0: float, y0: float, x1: float, y1: float, r
                 }
             )
     return {"cols": cols, "bubbles": bubbles, "box": {"x0": x0, "y0": y0, "x1": x1, "y1": y1}}
+
+
+def name_grid_from_box(cols: int, rows: int, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]:
+    cols = max(1, int(cols))
+    rows = max(1, min(26, int(rows)))
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    col_w = (x1 - x0) / cols
+    row_h = (y1 - y0) / rows
+    radius = min(col_w, row_h) * 0.32
+    bubbles = []
+    for c in range(cols):
+        for r in range(rows):
+            bubbles.append(
+                {
+                    "col": c,
+                    "letter": letters[r],
+                    "x": x0 + (c + 0.5) * col_w,
+                    "y": y0 + (r + 0.5) * row_h,
+                    "r": radius,
+                }
+            )
+    return {"cols": cols, "rows": rows, "bubbles": bubbles, "box": {"x0": x0, "y0": y0, "x1": x1, "y1": y1}}
 
 
 def questions_from_answer_box(
@@ -311,6 +428,9 @@ def apply_blocks_to_config(config: dict[str, Any], blocks: list[dict[str, Any]])
             config[kind] = digit_grid_from_box(block["cols"], x0, y0, x1, y1, block.get("rows") or 10)
         elif kind == "name":
             config["name"] = {k: block[k] for k in ("cols", "rows", "x0", "y0", "x1", "y1")}
+            config["name"]["bubbles"] = name_grid_from_box(
+                block["cols"], block["rows"], x0, y0, x1, y1
+            )["bubbles"]
         elif kind == "answers":
             answer_questions.extend(
                 questions_from_answer_box(block["start_q"], block["end_q"], x0, y0, x1, y1, options)

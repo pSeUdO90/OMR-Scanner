@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
 import { DeleteButton, EditLink, ViewLink } from "../components/ActionButtons";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
@@ -73,9 +73,13 @@ export default function Layouts() {
 
   return (
     <>
-      <PageTitle icon="layouts" subtitle="Create a layout from a printed sample, then draw and map each data block on the sheet.">
+      <PageTitle icon="layouts" subtitle="Design an A4 sheet with predefined blocks, or create a layout from a printed sample.">
         OMR layouts
       </PageTitle>
+      <p className="card">
+        <Link className="btn-view" to="/layouts/design">Design A4 OMR sheet</Link>
+        <span className="muted"> Place Roll, Name, Date, Test, and answer columns on a blank A4 page.</span>
+      </p>
       <form className="card" onSubmit={onCreate}>
         <h3>Create a new layout</h3>
         <div className="row">

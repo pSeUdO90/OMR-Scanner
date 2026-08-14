@@ -49,6 +49,40 @@ def test_real_gyana_scan_reads_eight_digit_roll():
     assert result["roll"] == "24001001"
 
 
+def test_a4_designed_sheet_round_trip():
+    from app.omr.generator import generate_designed_sheet
+    from app.omr.layouts import a4_design_layout, predefined_a4_blocks
+
+    blocks = predefined_a4_blocks(total_questions=40, columns=2, options="ABCD", roll_cols=8)
+    kinds = {b["kind"] for b in blocks}
+    assert {"roll", "name", "test_no", "test_id", "date", "answers"} <= kinds
+    layout = a4_design_layout("A4 Design", "a4-design-test", 40, 2, "ABCD", roll_cols=8)
+    assert layout["page_width_mm"] == 210
+    assert layout["page_height_mm"] == 297
+    assert layout["designed"] is True
+    assert layout["roll"]["cols"] == 8
+    image = generate_designed_sheet(layout, "24001001", {1: "A", 40: "D"})
+    assert abs(image.shape[0] / image.shape[1] - 297 / 210) < 0.02
+    result = evaluate_image(image, layout)
+    assert result["roll"] == "24001001"
+    assert result["answers"]["1"] == "A"
+    assert result["answers"]["40"] == "D"
+    client = TestClient(app)
+    created = client.post(
+        "/api/layouts/design",
+        json={"name": "A4 API Sheet", "description": "Designed", "total_questions": 20, "columns": 2, "options": "ABCD", "roll_cols": 8},
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["has_sample"] is True
+    assert any(b["kind"] == "roll" for b in created.json()["blocks"])
+    sheet = client.get(f"/api/layouts/{created.json()['id']}/blank-sheet")
+    assert sheet.status_code == 200
+    pdf = client.get(f"/api/layouts/{created.json()['id']}/blank-sheet.pdf")
+    assert pdf.status_code == 200
+    assert pdf.content[:4] == b"%PDF"
+    assert client.delete(f"/api/layouts/{created.json()['id']}").status_code == 200
+
+
 def test_manual_blocks_drive_roll_reading():
     from app.omr.layouts import apply_blocks_to_config, custom_grid_layout, digit_grid_from_box
 
