@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import AppUser, UserSession
 from ..security import create_session, get_current_user, hash_password, require_admin, verify_password
+from ..permissions import APP_TABS, load_role_permissions, permissions_for_user, save_role_permissions
 from ..settings_store import DEFAULT_PROCESSED_DIR, get_settings, processed_root
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -31,21 +32,24 @@ class UserOut(BaseModel):
     display_name: str
     role: str
     is_active: bool
+    permissions: dict[str, list[str]] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 
 
 class SettingsIn(BaseModel):
-    processed_images_dir: str = Field(default="")
+    processed_images_dir: str | None = None
+    role_permissions: dict | None = None
 
 
-def _user_out(user: AppUser) -> UserOut:
+def _user_out(user: AppUser, db: Session) -> UserOut:
     return UserOut(
         id=user.id,
         username=user.username,
         display_name=user.display_name or user.username,
         role=user.role,
         is_active=bool(user.is_active),
+        permissions=permissions_for_user(user, db),
     )
 
 
@@ -55,7 +59,7 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
         raise HTTPException(401, "Invalid username or password")
     token = create_session(db, user)
-    return {"token": token, "user": _user_out(user)}
+    return {"token": token, "user": _user_out(user, db)}
 
 
 @router.post("/auth/logout")
@@ -69,13 +73,13 @@ def logout(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/auth/me", response_model=UserOut)
-def me(user: AppUser = Depends(get_current_user)):
-    return _user_out(user)
+def me(user: AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _user_out(user, db)
 
 
 @router.get("/users", response_model=list[UserOut])
 def list_users(_: AppUser = Depends(require_admin), db: Session = Depends(get_db)):
-    return [_user_out(row) for row in db.query(AppUser).order_by(AppUser.username).all()]
+    return [_user_out(row, db) for row in db.query(AppUser).order_by(AppUser.username).all()]
 
 
 @router.post("/users", response_model=UserOut)
@@ -97,7 +101,7 @@ def create_user(payload: UserIn, _: AppUser = Depends(require_admin), db: Sessio
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _user_out(row)
+    return _user_out(row, db)
 
 
 @router.put("/users/{user_id}", response_model=UserOut)
@@ -125,7 +129,7 @@ def update_user(user_id: int, payload: UserIn, _: AppUser = Depends(require_admi
         row.password_hash = hash_password(payload.password)
     db.commit()
     db.refresh(row)
-    return _user_out(row)
+    return _user_out(row, db)
 
 
 @router.delete("/users/{user_id}")
@@ -152,18 +156,31 @@ def read_settings(_: AppUser = Depends(get_current_user), db: Session = Depends(
         "processed_images_dir": row.processed_images_dir or str(DEFAULT_PROCESSED_DIR),
         "resolved_dir": root,
         "default_dir": str(DEFAULT_PROCESSED_DIR),
+        "tabs": [{"key": key, "label": label} for key, label in APP_TABS],
+        "actions": ["view", "edit", "delete"],
+        "roles": ["admin", "user"],
+        "role_permissions": load_role_permissions(db),
     }
 
 
 @router.put("/settings")
 def save_settings(payload: SettingsIn, _: AppUser = Depends(require_admin), db: Session = Depends(get_db)):
     row = get_settings(db)
-    path = payload.processed_images_dir.strip() or str(DEFAULT_PROCESSED_DIR)
-    row.processed_images_dir = path
-    db.commit()
+    if payload.processed_images_dir is not None:
+        path = payload.processed_images_dir.strip() or str(DEFAULT_PROCESSED_DIR)
+        row.processed_images_dir = path
+    matrix = load_role_permissions(db)
+    if payload.role_permissions is not None:
+        matrix = save_role_permissions(db, payload.role_permissions)
+    else:
+        db.commit()
     root = processed_root(db)
     return {
-        "processed_images_dir": row.processed_images_dir,
+        "processed_images_dir": row.processed_images_dir or str(DEFAULT_PROCESSED_DIR),
         "resolved_dir": str(root),
         "default_dir": str(DEFAULT_PROCESSED_DIR),
+        "tabs": [{"key": key, "label": label} for key, label in APP_TABS],
+        "actions": ["view", "edit", "delete"],
+        "roles": ["admin", "user"],
+        "role_permissions": matrix,
     }

@@ -14,7 +14,7 @@ DEFAULT_PROCESSED_DIR = DATA_DIR / "processed"
 def get_settings(db: Session) -> AppSettings:
     row = db.query(AppSettings).order_by(AppSettings.id).first()
     if row is None:
-        row = AppSettings(processed_images_dir=str(DEFAULT_PROCESSED_DIR))
+        row = AppSettings(processed_images_dir=str(DEFAULT_PROCESSED_DIR), role_permissions_json="{}")
         db.add(row)
         db.commit()
         db.refresh(row)

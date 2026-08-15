@@ -44,6 +44,9 @@ def _ensure_columns() -> None:
         sheet_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(exam_sheets)")).fetchall()}
         if sheet_cols and "assigned_manually" not in sheet_cols:
             conn.execute(text("ALTER TABLE exam_sheets ADD COLUMN assigned_manually BOOLEAN DEFAULT 0"))
+        setting_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(app_settings)")).fetchall()}
+        if setting_cols and "role_permissions_json" not in setting_cols:
+            conn.execute(text("ALTER TABLE app_settings ADD COLUMN role_permissions_json TEXT DEFAULT '{}'"))
 
 
 def init_db() -> None:

@@ -1,17 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="OMR Software">
-  <rect width="96" height="96" rx="18" fill="#10BBC3"/>
-  <rect x="18" y="12" width="60" height="72" rx="6" fill="#051A2D"/>
-  <rect x="24" y="20" width="28" height="6" rx="2" fill="#10BBC3"/>
-  <circle cx="30" cy="40" r="4" fill="none" stroke="#FEA24F" stroke-width="2"/>
-  <circle cx="42" cy="40" r="4" fill="#FEA24F"/>
-  <circle cx="54" cy="40" r="4" fill="none" stroke="#FEA24F" stroke-width="2"/>
-  <circle cx="66" cy="40" r="4" fill="none" stroke="#FEA24F" stroke-width="2"/>
-  <circle cx="30" cy="56" r="4" fill="none" stroke="#10BBC3" stroke-width="2"/>
-  <circle cx="42" cy="56" r="4" fill="none" stroke="#10BBC3" stroke-width="2"/>
-  <circle cx="54" cy="56" r="4" fill="#10BBC3"/>
-  <circle cx="66" cy="56" r="4" fill="none" stroke="#10BBC3" stroke-width="2"/>
-  <circle cx="30" cy="72" r="4" fill="#A60E35"/>
-  <circle cx="42" cy="72" r="4" fill="none" stroke="#A60E35" stroke-width="2"/>
-  <circle cx="54" cy="72" r="4" fill="none" stroke="#A60E35" stroke-width="2"/>
-  <circle cx="66" cy="72" r="4" fill="none" stroke="#A60E35" stroke-width="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 220" role="img" aria-label="Gyana Vikash English Medium School">
+  <rect width="640" height="220" rx="12" fill="#ffffff"/>
+  <g transform="translate(18,18)">
+    <g transform="translate(86,62)">
+      <polygon fill="#2E7D32" points="0,-52 12,-16 52,-16 20,6 32,44 0,22 -32,44 -20,6 -52,-16 -12,-16"/>
+      <circle cx="0" cy="0" r="18" fill="none" stroke="#ffffff" stroke-width="3"/>
+    </g>
+    <g transform="translate(52,78)">
+      <path d="M8 28 L68 12 L68 58 L8 74 Z" fill="#8D6E63"/>
+      <path d="M68 12 L128 28 L128 74 L68 58 Z" fill="#A1887F"/>
+      <path d="M68 12 L68 58" stroke="#F6D365" stroke-width="4"/>
+      <path d="M20 40 L60 28" stroke="#EFEBE9" stroke-width="2"/>
+      <path d="M76 28 L116 40" stroke="#EFEBE9" stroke-width="2"/>
+    </g>
+    <path d="M18 132 C48 118, 88 118, 118 132 C88 146, 48 146, 18 132 Z" fill="#C62828"/>
+    <text x="68" y="138" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">GYANA VIKASH</text>
+  </g>
+  <text x="190" y="72" fill="#2E7D32" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="800">GYANA</text>
+  <rect x="188" y="86" width="250" height="48" fill="#C62828"/>
+  <text x="208" y="121" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="800">VIKASH</text>
+  <text x="190" y="158" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">ENGLISH MEDIUM SCHOOL</text>
+  <text x="24" y="198" fill="#6A1B4D" font-family="Georgia, serif" font-size="16" font-style="italic">Quality Education : A Community Commitment</text>
 </svg>

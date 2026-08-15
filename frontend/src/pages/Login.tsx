@@ -18,7 +18,7 @@ export default function Login() {
   return (
     <div className="login-screen">
       <form className="card login-card" onSubmit={onSubmit}>
-        <img src="/logo.svg" alt="" className="login-logo" />
+        <img src="/logo.svg" alt="Gyana Vikash English Medium School" className="login-logo" />
         <h1>OMR Software</h1>
         <p className="muted">Sign in to continue.</p>
         <label>

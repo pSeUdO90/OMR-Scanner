@@ -49,3 +49,20 @@ def test_settings_processed_folder():
     assert got.json()["processed_images_dir"].endswith("omr-processed-test")
     with SessionLocal() as db:
         assert db.query(AppUser).filter(AppUser.username == "admin").one().role == "admin"
+
+
+def test_role_permissions_matrix():
+    client = TestClient(app)
+    got = client.get("/api/settings")
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert "students" in {tab["key"] for tab in body["tabs"]}
+    assert body["role_permissions"]["admin"]["users"] == ["view", "edit", "delete"]
+    matrix = body["role_permissions"]
+    matrix["user"]["students"] = ["view"]
+    matrix["user"]["users"] = []
+    saved = client.put("/api/settings", json={"role_permissions": matrix})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["role_permissions"]["user"]["students"] == ["view"]
+    me = client.get("/api/auth/me").json()
+    assert "view" in me["permissions"]["settings"]

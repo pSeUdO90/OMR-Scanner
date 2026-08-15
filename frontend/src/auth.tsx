@@ -7,6 +7,7 @@ export type AuthUser = {
   display_name: string;
   role: string;
   is_active: boolean;
+  permissions?: Record<string, string[]>;
 };
 
 type AuthContextValue = {
