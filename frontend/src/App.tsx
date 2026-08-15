@@ -6,6 +6,7 @@ import StudentView from "./pages/StudentView";
 import Subjects from "./pages/Subjects";
 import Layouts from "./pages/Layouts";
 import LayoutDesign from "./pages/LayoutDesign";
+import OmrStudio from "./pages/OmrStudio";
 import LayoutDetail from "./pages/LayoutDetail";
 import Exams from "./pages/Exams";
 import ExamDetail from "./pages/ExamDetail";
@@ -24,6 +25,7 @@ export default function App() {
         <NavLink to="/" end><NavIcon name="dashboard" /> Dashboard</NavLink>
         <NavLink to="/students"><NavIcon name="students" /> Students</NavLink>
         <NavLink to="/subjects"><NavIcon name="subjects" /> Subjects</NavLink>
+        <NavLink to="/layouts/studio"><NavIcon name="layouts" /> OMR studio</NavLink>
         <NavLink to="/layouts"><NavIcon name="layouts" /> OMR layouts</NavLink>
         <NavLink to="/exams"><NavIcon name="exams" /> Exams</NavLink>
         <NavLink to="/evaluation"><NavIcon name="evaluation" /> Evaluation</NavLink>
@@ -36,6 +38,7 @@ export default function App() {
           <Route path="/students/:id" element={<StudentView />} />
           <Route path="/subjects" element={<Subjects />} />
           <Route path="/layouts" element={<Layouts />} />
+          <Route path="/layouts/studio" element={<OmrStudio />} />
           <Route path="/layouts/design" element={<LayoutDesign />} />
           <Route path="/layouts/:id" element={<LayoutDetail />} />
           <Route path="/exams" element={<Exams />} />

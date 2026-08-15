@@ -529,3 +529,73 @@ button.icon-btn img { display: block; width: 22px; height: 22px; }
   color: #051A2D;
 }
 .a4-page .block-label { background: rgba(255, 255, 255, 0.9); color: #051A2D; }
+
+html.omr-studio-active .main { padding: 1rem 1.2rem 1.5rem; }
+.omr-studio {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 1rem;
+  min-height: calc(100vh - 3rem);
+}
+.omr-studio-sidebar {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  align-self: start;
+}
+.omr-studio-sidebar h2 { font-size: 1.15rem; }
+.omr-studio-sidebar button { width: 100%; }
+.omr-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink);
+}
+.omr-inspector {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+.omr-json {
+  width: 100%;
+  margin-top: 0.6rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  background: #03121f;
+  color: #eef6f7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.omr-studio-stage {
+  overflow: auto;
+  padding: 0.5rem 0 2rem;
+  display: flex;
+  justify-content: center;
+}
+.omr-a4-frame {
+  width: 210mm;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+.omr-a4-svg {
+  display: block;
+  width: 210mm;
+  height: 297mm;
+  background: #fff;
+}
+.omr-grid-cell { pointer-events: none; }
+
+@media print {
+  @page { size: A4 portrait; margin: 0; }
+  html, body, #root { background: #fff !important; }
+  .nav, .no-print, .omr-studio-sidebar { display: none !important; }
+  .shell { display: block; min-height: auto; }
+  .main { padding: 0; }
+  .omr-studio { display: block; }
+  .omr-studio-stage { overflow: visible; padding: 0; }
+  .omr-a4-frame { box-shadow: none; width: 210mm; }
+  .omr-a4-svg { width: 210mm; height: 297mm; }
+  .omr-grid-cell, .omr-block-hit { display: none !important; }
+  .omr-block.selected rect.omr-block-hit { display: none !important; }
+}

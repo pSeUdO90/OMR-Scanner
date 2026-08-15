@@ -77,6 +77,10 @@ export default function Layouts() {
         OMR layouts
       </PageTitle>
       <p className="card">
+        <Link className="btn-view" to="/layouts/studio">Open A4 OMR Studio</Link>
+        <span className="muted"> 6.5 mm grid, 4.5 mm bubbles, print sheet, and mapping JSON.</span>
+      </p>
+      <p className="card">
         <Link className="btn-view" to="/layouts/design">Design A4 OMR sheet</Link>
         <span className="muted"> Place Roll, Name, Date, Test, and answer columns on a blank A4 page.</span>
       </p>
