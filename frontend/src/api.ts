@@ -3,6 +3,21 @@ import type { DataBlock } from "./blockKinds";
 export type { DataBlock };
 export { BLOCK_KINDS, FIELD_TARGETS } from "./blockKinds";
 
+const TOKEN_KEY = "omr_token";
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || "";
+}
+
+export function setToken(token: string) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
 const json = async (res: Response) => {
   const text = await res.text();
   let data: unknown = text;
@@ -11,6 +26,9 @@ const json = async (res: Response) => {
   } catch {
     data = text;
   }
+  if (res.status === 401 && !res.url.includes("/api/auth/login")) {
+    clearToken();
+  }
   if (!res.ok) {
     const detail = typeof data === "object" && data && "detail" in data ? (data as { detail: unknown }).detail : null;
     throw new Error(typeof detail === "string" ? detail : text || res.statusText);
@@ -18,21 +36,29 @@ const json = async (res: Response) => {
   return data;
 };
 
+const headersFor = (body?: unknown) => {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
+  return headers;
+};
+
 export const api = {
-  get: (path: string) => fetch(path).then(json),
+  get: (path: string) => fetch(path, { headers: headersFor() }).then(json),
   post: (path: string, body?: unknown) =>
     fetch(path, {
       method: "POST",
-      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body ?? {}),
     }).then(json),
   put: (path: string, body: unknown) =>
     fetch(path, {
       method: "PUT",
-      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body),
     }).then(json),
-  del: (path: string) => fetch(path, { method: "DELETE" }).then(json),
+  del: (path: string) => fetch(path, { method: "DELETE", headers: headersFor() }).then(json),
 };
 
 export type Student = {

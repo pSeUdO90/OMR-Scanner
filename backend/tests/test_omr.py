@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi.testclient import TestClient
+from conftest import TestClient
 from PIL import Image
 import base64
 import json

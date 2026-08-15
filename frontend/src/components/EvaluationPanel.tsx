@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, Exam, Student } from "../api";
+import { api, Exam, getToken, Student } from "../api";
 import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "./BulkSelect";
 import { useConfirm } from "./ConfirmProvider";
 
@@ -56,6 +56,8 @@ export default function EvaluationPanel({
   setKeyString: (value: string) => void;
   onReload: () => void;
 }) {
+  const [processRows, setProcessRows] = useState<{ id: number; filename: string; status: string; detail: string }[]>([]);
+  const [processing, setProcessing] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const keyRef = useRef<HTMLInputElement>(null);
@@ -255,7 +257,11 @@ export default function EvaluationPanel({
               const data = new FormData();
               for (const file of Array.from(e.target.files)) data.append("files", file);
               try {
-                await fetch(`/api/exams/${id}/sheets`, { method: "POST", body: data }).then((r) => {
+                await fetch(`/api/exams/${id}/sheets`, {
+                  method: "POST",
+                  headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : undefined,
+                  body: data,
+                }).then((r) => {
                   if (!r.ok) throw new Error("Upload failed");
                   return r.json();
                 });
@@ -266,41 +272,85 @@ export default function EvaluationPanel({
               }
             }}
           />
-          <div className="eval-inline-fields">
+          <div className="eval-inline-fields eval-actions">
             <button type="button" disabled={!keyComplete} onClick={() => scanRef.current?.click()}>
               Upload Sheets
             </button>
             <button
               type="button"
               className="secondary"
-              disabled={!sheets.length}
+              disabled={!sheets.length || processing}
               onClick={async () => {
                 setErr("");
-                try {
-                  const res = await api.post(`/api/exams/${id}/process-omr`);
-                  const failed = Number(res.failed || 0);
-                  const processed = Number(res.processed || 0);
-                  if (failed) {
-                    setErr(`Process OMR finished with ${failed} failure(s). ${processed} sheet(s) aligned.`);
-                  } else {
-                    setMsg(`Process OMR aligned ${processed} sheet(s).`);
+                setProcessing(true);
+                const queue = sheets.map((sheet) => ({
+                  id: sheet.id,
+                  filename: sheet.filename,
+                  status: "pending",
+                  detail: "Waiting",
+                }));
+                setProcessRows(queue);
+                let failed = 0;
+                for (let i = 0; i < queue.length; i += 1) {
+                  const sheet = queue[i];
+                  setProcessRows((rows) =>
+                    rows.map((row) => (row.id === sheet.id ? { ...row, status: "processing", detail: "Processing…" } : row)),
+                  );
+                  try {
+                    const res = await api.post(`/api/exams/${id}/sheets/${sheet.id}/process`);
+                    setProcessRows((rows) =>
+                      rows.map((row) =>
+                        row.id === sheet.id
+                          ? { ...row, status: "done", detail: `Saved${res.exported_path ? ` · ${res.exported_path}` : ""}` }
+                          : row,
+                      ),
+                    );
+                  } catch (error) {
+                    failed += 1;
+                    const message = error instanceof Error ? error.message : "Failed";
+                    setProcessRows((rows) =>
+                      rows.map((row) => (row.id === sheet.id ? { ...row, status: "error", detail: message } : row)),
+                    );
                   }
-                  onReload();
-                } catch (error) {
-                  setErr(error instanceof Error ? error.message : "Process OMR failed");
                 }
+                setProcessing(false);
+                if (failed) setErr(`Process OMR finished with ${failed} failure(s).`);
+                else setMsg(`Process OMR aligned ${queue.length} sheet(s).`);
+                onReload();
               }}
             >
-              Process OMR
+              {processing ? "Processing…" : "Process OMR"}
             </button>
           </div>
+          {processRows.length > 0 && (
+            <div className="process-progress">
+              <p className="muted">
+                {processRows.filter((row) => row.status === "done").length}/{processRows.length} sheets processed
+              </p>
+              <div className="process-bar">
+                <span
+                  style={{
+                    width: `${(processRows.filter((row) => row.status === "done" || row.status === "error").length / processRows.length) * 100}%`,
+                  }}
+                />
+              </div>
+              <ul>
+                {processRows.map((row) => (
+                  <li key={row.id} className={`process-${row.status}`}>
+                    <strong>{row.filename}</strong>
+                    <span>{row.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="card eval-compact-card">
           <h3>Evaluate</h3>
           <p className="muted">
             {keyComplete ? "Score uploaded sheets against the saved Answer Key." : "Mark every question in the Answer Key to enable evaluation."}
           </p>
-          <div className="eval-inline-fields">
+          <div className="eval-inline-fields eval-actions">
             <button
               type="button"
               disabled={!keyComplete}

@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from "react-router-dom";
+import { useAuth } from "./auth";
 import { NavIcon } from "./components/Icons";
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
@@ -12,14 +13,20 @@ import ExamDetail from "./pages/ExamDetail";
 import Evaluation from "./pages/Evaluation";
 import Reports from "./pages/Reports";
 import Results from "./pages/Results";
+import Settings from "./pages/Settings";
+import Users from "./pages/Users";
+import Login from "./pages/Login";
 
 export default function App() {
+  const { user, ready, logout } = useAuth();
+  if (!ready) return <div className="login-screen"><p className="muted">Loading…</p></div>;
+  if (!user) return <Login />;
   return (
     <div className="shell">
       <nav className="nav">
         <div className="brand">
-          <img src="/logo.jpg" alt="Gyana Vikash" />
-          <h1>Gyana Vikash OMR</h1>
+          <img src="/logo.svg" alt="OMR Software" />
+          <h1>OMR Software</h1>
         </div>
         <NavLink to="/" end><NavIcon name="dashboard" /> Dashboard</NavLink>
         <NavLink to="/students"><NavIcon name="students" /> Students</NavLink>
@@ -28,6 +35,11 @@ export default function App() {
         <NavLink to="/exams"><NavIcon name="exams" /> Exams</NavLink>
         <NavLink to="/evaluation"><NavIcon name="evaluation" /> Evaluation</NavLink>
         <NavLink to="/reports"><NavIcon name="reports" /> Reports</NavLink>
+        <NavLink to="/settings"><NavIcon name="settings" /> Settings</NavLink>
+        {user.role === "admin" && <NavLink to="/users"><NavIcon name="users" /> Users</NavLink>}
+        <button type="button" className="nav-logout" onClick={() => logout()}>
+          <NavIcon name="logout" /> Log Out
+        </button>
       </nav>
       <main className="main">
         <Routes>
@@ -44,6 +56,8 @@ export default function App() {
           <Route path="/exams/:id/results" element={<Results />} />
           <Route path="/evaluation" element={<Evaluation />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/users" element={user.role === "admin" ? <Users /> : <Dashboard />} />
         </Routes>
       </main>
     </div>

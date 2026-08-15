@@ -20,6 +20,7 @@ from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet, prefill_on_layout_sample
 from ..omr.de_skew_engine import OMRAlignmentError, align_omr_sheet
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
+from ..settings_store import exam_processed_dir
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import AnswerKeyIn, AssignSheetIn, ExamIn, ExamOut, GraceIn, SheetIdsIn, SheetOut, SubjectMapOut
 from ..scoring import assigned_students, bind_sheet_student, build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
@@ -384,6 +385,39 @@ def _sheet_out(sheet: ExamSheet) -> SheetOut:
     )
 
 
+def _copy_to_exam_folder(db: Session, exam: Exam, sheet: ExamSheet, aligned_path: Path) -> str:
+    dest_dir = exam_processed_dir(db, exam)
+    stem = Path(sheet.filename or aligned_path.name).stem or f"sheet-{sheet.id}"
+    dest = dest_dir / f"{stem}{aligned_path.suffix or '.png'}"
+    if dest.exists():
+        dest = dest_dir / f"{stem}-{sheet.id}{aligned_path.suffix or '.png'}"
+    shutil.copy2(aligned_path, dest)
+    return str(dest)
+
+
+def _process_one_sheet(db: Session, exam: Exam, sheet: ExamSheet, layout: dict, *, debug: bool = True) -> dict:
+    debug_path = Path(sheet.stored_path).with_name(f"deskew-debug-{sheet.id}.png")
+    aligned, meta = align_omr_sheet(sheet.stored_path, layout, debug=debug, debug_path=debug_path)
+    aligned_path = Path(sheet.stored_path).with_name(f"aligned-{sheet.id}.png")
+    save_image(aligned_path, aligned)
+    sheet.stored_path = str(aligned_path)
+    exported = _copy_to_exam_folder(db, exam, sheet, aligned_path)
+    if sheet.status == "error":
+        sheet.status = "uploaded"
+    sheet.error_message = ""
+    return {
+        "sheet_id": sheet.id,
+        "filename": sheet.filename,
+        "ok": True,
+        "skew_angle": meta.get("skew_angle"),
+        "confidence": meta.get("confidence"),
+        "method": meta.get("method"),
+        "rotated_180": meta.get("rotated_180"),
+        "used_extrapolated_corner": meta.get("used_extrapolated_corner"),
+        "exported_path": exported,
+    }
+
+
 @router.get("/{exam_id}/sheets", response_model=list[SheetOut])
 def list_sheets(exam_id: int, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
@@ -401,38 +435,38 @@ def process_omr_sheets(exam_id: int, debug: bool = True, db: Session = Depends(g
     results = []
     for sheet in exam.sheets:
         try:
-            debug_path = Path(sheet.stored_path).with_name(f"deskew-debug-{sheet.id}.png")
-            aligned, meta = align_omr_sheet(
-                sheet.stored_path,
-                layout,
-                debug=debug,
-                debug_path=debug_path,
-            )
-            aligned_path = Path(sheet.stored_path).with_name(f"aligned-{sheet.id}.png")
-            save_image(aligned_path, aligned)
-            sheet.stored_path = str(aligned_path)
-            if sheet.status == "error":
-                sheet.status = "uploaded"
-            sheet.error_message = ""
+            results.append(_process_one_sheet(db, exam, sheet, layout, debug=debug))
             processed += 1
-            results.append(
-                {
-                    "sheet_id": sheet.id,
-                    "ok": True,
-                    "skew_angle": meta.get("skew_angle"),
-                    "confidence": meta.get("confidence"),
-                    "method": meta.get("method"),
-                    "rotated_180": meta.get("rotated_180"),
-                    "used_extrapolated_corner": meta.get("used_extrapolated_corner"),
-                }
-            )
         except (OMRAlignmentError, ValueError, Exception) as exc:  # noqa: BLE001
             failed += 1
             sheet.status = "error"
             sheet.error_message = str(exc)
-            results.append({"sheet_id": sheet.id, "ok": False, "error": str(exc)})
+            results.append({"sheet_id": sheet.id, "filename": sheet.filename, "ok": False, "error": str(exc)})
     db.commit()
-    return {"processed": processed, "failed": failed, "results": results}
+    return {
+        "processed": processed,
+        "failed": failed,
+        "results": results,
+        "output_dir": str(exam_processed_dir(db, exam)),
+    }
+
+
+@router.post("/{exam_id}/sheets/{sheet_id}/process")
+def process_one_omr_sheet(exam_id: int, sheet_id: int, debug: bool = True, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    sheet = next((row for row in exam.sheets if row.id == sheet_id), None)
+    if sheet is None:
+        raise HTTPException(404, "Sheet not found")
+    layout = parse_layout(exam.layout.config_json)
+    try:
+        result = _process_one_sheet(db, exam, sheet, layout, debug=debug)
+        db.commit()
+        return result
+    except (OMRAlignmentError, ValueError, Exception) as exc:  # noqa: BLE001
+        sheet.status = "error"
+        sheet.error_message = str(exc)
+        db.commit()
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/{exam_id}/evaluate")

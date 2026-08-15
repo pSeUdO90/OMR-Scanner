@@ -1,6 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -8,7 +8,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from .database import Base, SessionLocal, engine
-from .routers import exams, layouts, students, subjects
+from .routers import auth, exams, layouts, students, subjects
+from .security import user_from_token
 from .seed import seed_reference_data
 
 
@@ -57,7 +58,7 @@ def init_db() -> None:
 
 init_db()
 
-app = FastAPI(title="Gyana Vikash OMR", version="1.0.0")
+app = FastAPI(title="OMR Software", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -65,10 +66,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(auth.router)
 app.include_router(students.router)
 app.include_router(subjects.router)
 app.include_router(layouts.router)
 app.include_router(exams.router)
+
+PUBLIC_API = {"/api/health", "/api/auth/login"}
+
+
+@app.middleware("http")
+async def require_api_login(request: Request, call_next):
+    path = request.url.path
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if path.startswith("/api/") and path not in PUBLIC_API:
+        header = request.headers.get("authorization") or ""
+        token = header.split(" ", 1)[1].strip() if header.lower().startswith("bearer ") else None
+        if not token:
+            token = request.cookies.get("omr_token")
+        with SessionLocal() as db:
+            user = user_from_token(db, token)
+        if user is None:
+            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/api/health")

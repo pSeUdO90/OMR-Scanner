@@ -4,8 +4,9 @@ import json
 
 from sqlalchemy.orm import Session
 
-from .models import Exam, OmrLayout, Subject
+from .models import AppUser, Exam, OmrLayout, Subject
 from .omr.layouts import BUILTIN_LAYOUTS, RETIRED_LAYOUT_SLUGS, gyana_vikash_180
+from .security import hash_password
 
 
 def seed_reference_data(db: Session) -> None:
@@ -60,3 +61,15 @@ def seed_reference_data(db: Session) -> None:
         cfg["roll"] = calibrated_roll
         row.config_json = json.dumps(cfg)
     db.commit()
+
+    if db.query(AppUser).filter(AppUser.username == "admin").one_or_none() is None:
+        db.add(
+            AppUser(
+                username="admin",
+                password_hash=hash_password("admin"),
+                display_name="Administrator",
+                role="admin",
+                is_active=True,
+            )
+        )
+        db.commit()

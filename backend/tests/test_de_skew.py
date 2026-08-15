@@ -149,7 +149,7 @@ def test_rotates_upside_down_scan():
 
 def test_process_omr_endpoint(tmp_path: Path):
     import json
-    from fastapi.testclient import TestClient
+    from conftest import TestClient
     from app.database import SessionLocal
     from app.main import app, _ensure_columns
     from app.models import OmrLayout, Base
@@ -211,4 +211,7 @@ def test_process_omr_endpoint(tmp_path: Path):
     assert body["failed"] == 0
     assert body["results"][0]["ok"] is True
     assert body["results"][0]["method"] == "fiducials"
+    exported = Path(body["results"][0]["exported_path"])
+    assert exported.exists()
+    assert "Process OMR Exam" in str(exported.parent)
 

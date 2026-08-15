@@ -16,6 +16,37 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 
+class AppUser(Base):
+    __tablename__ = "app_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(String(160), default="")
+    role: Mapped[str] = mapped_column(String(20), default="user")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    token: Mapped[str] = mapped_column(String(80), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    user: Mapped[AppUser] = relationship(back_populates="sessions")
+
+
+class AppSettings(Base):
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    processed_images_dir: Mapped[str] = mapped_column(String(500), default="")
+
+
 class Student(Base):
     __tablename__ = "students"
 
