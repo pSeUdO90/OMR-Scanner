@@ -443,5 +443,8 @@ def test_studio_layout_saves_mapping_json():
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["name"] == "Studio Save Test Edited"
+    duplicate = client.post("/api/layouts/studio", json={**payload, "name": "Studio Save Test Edited"})
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "Layout name already exists"
     assert client.delete(f"/api/layouts/{row['id']}").status_code == 200
 

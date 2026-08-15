@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import UPLOAD_DIR, get_db
@@ -53,6 +54,18 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
     else:
         item.analysis = analyze_layout_config(config, None)
     return item
+
+
+def _assert_unique_name(db: Session, name: str, exclude_id: int | None = None) -> str:
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise HTTPException(400, "Layout name is required")
+    query = db.query(OmrLayout).filter(func.lower(OmrLayout.name) == cleaned.lower())
+    if exclude_id is not None:
+        query = query.filter(OmrLayout.id != exclude_id)
+    if query.first():
+        raise HTTPException(409, "Layout name already exists")
+    return cleaned
 
 
 def _unique_slug(db: Session, name: str) -> str:
@@ -139,7 +152,9 @@ def _studio_config(payload: StudioLayoutIn, slug: str) -> dict:
 
 @router.post("/studio", response_model=LayoutOut)
 def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
-    slug = _unique_slug(db, payload.name)
+    name = _assert_unique_name(db, payload.name)
+    slug = _unique_slug(db, name)
+    payload.name = name
     config = _studio_config(payload, slug)
     sample_path = _write_thumbnail(slug, payload.thumbnail_base64) or _write_designed_sample(slug, config)
     row = OmrLayout(
@@ -166,6 +181,8 @@ def update_studio_layout(layout_id: int, payload: StudioLayoutIn, db: Session = 
         raise HTTPException(404, "Layout not found")
     if row.is_builtin:
         raise HTTPException(400, "Built-in layouts cannot be edited")
+    name = _assert_unique_name(db, payload.name, exclude_id=row.id)
+    payload.name = name
     config = _studio_config(payload, row.slug)
     thumb = _write_thumbnail(row.slug, payload.thumbnail_base64)
     if thumb:
@@ -182,6 +199,7 @@ def update_studio_layout(layout_id: int, payload: StudioLayoutIn, db: Session = 
 
 @router.post("/design", response_model=LayoutOut)
 def create_designed_layout(payload: LayoutDesignIn, db: Session = Depends(get_db)):
+    payload.name = _assert_unique_name(db, payload.name)
     slug = _unique_slug(db, payload.name)
     options = "".join(ch for ch in payload.options.upper() if ch in "ABCDEF") or "ABCD"
     maps = _subject_maps_from_form(json.dumps(payload.subject_maps), payload.total_questions)
@@ -274,6 +292,7 @@ async def create_layout(
     raw = await sample.read()
     if not raw:
         raise HTTPException(400, "PDF/JPG of the sample OMR must be uploaded")
+    name = _assert_unique_name(db, name)
     slug = _unique_slug(db, name)
     try:
         sample_path = _store_sample(slug, sample.filename or "sample.jpg", raw)
@@ -325,6 +344,7 @@ async def update_layout(
     row = db.get(OmrLayout, layout_id)
     if not row:
         raise HTTPException(404, "Layout not found")
+    name = _assert_unique_name(db, name, exclude_id=row.id)
     row.name = name
     row.description = description or row.description
     maps = _subject_maps_from_form(subject_maps, total_questions)

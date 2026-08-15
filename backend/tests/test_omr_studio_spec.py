@@ -66,6 +66,10 @@ def test_omr_studio_export_schema_strings():
     assert "onMove" in canvas
     layouts = (ROOT.parent / "pages" / "Layouts.tsx").read_text()
     assert "Edit Layout" in layouts
-    assert "layout-thumb" in layouts
+    assert "layout-grid-3" in layouts
+    assert "Create a new layout" not in layouts
+    assert "ViewLink" not in layouts
     assert "Design A4 OMR sheet" not in layouts
+    assert "Save as default" in studio
+    assert "saveStudioDefault" in (ROOT / "studioDefaults.ts").read_text()
     assert "captureSheetThumbnail" in (ROOT / "thumbnail.ts").read_text()

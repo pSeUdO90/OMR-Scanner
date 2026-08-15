@@ -13,6 +13,7 @@ import {
   StudioConfig,
 } from "../omrStudio/layoutEngine";
 import { qualitySummary, runQualityCheck } from "../omrStudio/qualityCheck";
+import { initialStudioState, saveStudioDefault } from "../omrStudio/studioDefaults";
 import { captureSheetThumbnail } from "../omrStudio/thumbnail";
 
 function Field({
@@ -36,9 +37,12 @@ export default function OmrStudio() {
   const pageRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
   const [layoutId, setLayoutId] = useState<number | null>(id ? Number(id) : null);
-  const [config, setConfig] = useState<StudioConfig>(defaultConfig());
-  const [geometry, setGeometry] = useState<SheetGeometry>(() => cloneGeometry());
-  const [blocks, setBlocks] = useState<StudioBlock[]>(() => buildDefaultBlocks(defaultConfig()));
+  const [config, setConfig] = useState<StudioConfig>(() => initialStudioState().config);
+  const [geometry, setGeometry] = useState<SheetGeometry>(() => initialStudioState().geometry);
+  const [blocks, setBlocks] = useState<StudioBlock[]>(() => {
+    const start = initialStudioState();
+    return start.blocks.length ? start.blocks : buildDefaultBlocks(start.config, start.geometry);
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<StudioBlock | null>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -311,6 +315,10 @@ export default function OmrStudio() {
           <button type="button" className="secondary" onClick={exportJson}>Export JSON</button>
           <button type="button" className="secondary" onClick={copyJson}>Copy JSON</button>
           <button type="button" className="secondary" onClick={() => setQaOpen(true)}>Quality check</button>
+          <button type="button" className="secondary" onClick={() => {
+            saveStudioDefault({ config, geometry, blocks });
+            setMsg("Current values saved as the default OMR Studio layout.");
+          }}>Save as default</button>
           <button type="button" onClick={saveLayout}>Save</button>
         </div>
         {msg && <p className="omr-hint">{msg}</p>}
