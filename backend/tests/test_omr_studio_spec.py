@@ -71,5 +71,7 @@ def test_omr_studio_export_schema_strings():
     assert "ViewLink" not in layouts
     assert "Design A4 OMR sheet" not in layouts
     assert "Save as default" in studio
+    assert "Loading layout" in studio
+    assert "hydrateStudioState" in (ROOT / "studioDefaults.ts").read_text()
     assert "saveStudioDefault" in (ROOT / "studioDefaults.ts").read_text()
     assert "captureSheetThumbnail" in (ROOT / "thumbnail.ts").read_text()

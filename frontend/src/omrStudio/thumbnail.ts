@@ -1,8 +1,8 @@
 export async function captureSheetThumbnail(svg: SVGSVGElement): Promise<string> {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   clone.querySelectorAll(".omr-grid-cell, .omr-block-hit").forEach((node) => node.remove());
-  clone.setAttribute("width", "420");
-  clone.setAttribute("height", "594");
+  clone.setAttribute("width", "840");
+  clone.setAttribute("height", "1188");
   const xml = new XMLSerializer().serializeToString(clone);
   const blob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -14,8 +14,8 @@ export async function captureSheetThumbnail(svg: SVGSVGElement): Promise<string>
       img.src = url;
     });
     const canvas = document.createElement("canvas");
-    canvas.width = 420;
-    canvas.height = 594;
+    canvas.width = 840;
+    canvas.height = 1188;
     const ctx = canvas.getContext("2d");
     if (!ctx) return "";
     ctx.fillStyle = "#ffffff";

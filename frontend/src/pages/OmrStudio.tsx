@@ -13,7 +13,7 @@ import {
   StudioConfig,
 } from "../omrStudio/layoutEngine";
 import { qualitySummary, runQualityCheck } from "../omrStudio/qualityCheck";
-import { initialStudioState, saveStudioDefault } from "../omrStudio/studioDefaults";
+import { initialStudioState, hydrateStudioState, saveStudioDefault } from "../omrStudio/studioDefaults";
 import { captureSheetThumbnail } from "../omrStudio/thumbnail";
 
 function Field({
@@ -36,10 +36,13 @@ export default function OmrStudio() {
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
+  const editing = Boolean(id);
+  const [ready, setReady] = useState(!editing);
   const [layoutId, setLayoutId] = useState<number | null>(id ? Number(id) : null);
-  const [config, setConfig] = useState<StudioConfig>(() => initialStudioState().config);
-  const [geometry, setGeometry] = useState<SheetGeometry>(() => initialStudioState().geometry);
+  const [config, setConfig] = useState<StudioConfig>(() => (editing ? defaultConfig() : initialStudioState().config));
+  const [geometry, setGeometry] = useState<SheetGeometry>(() => (editing ? cloneGeometry() : initialStudioState().geometry));
   const [blocks, setBlocks] = useState<StudioBlock[]>(() => {
+    if (editing) return [];
     const start = initialStudioState();
     return start.blocks.length ? start.blocks : buildDefaultBlocks(start.config, start.geometry);
   });
@@ -59,31 +62,51 @@ export default function OmrStudio() {
 
   useEffect(() => {
     if (!id) {
+      const start = initialStudioState();
       setLayoutId(null);
+      setConfig(start.config);
+      setGeometry(start.geometry);
+      setBlocks(start.blocks.length ? start.blocks : buildDefaultBlocks(start.config, start.geometry));
+      setSelectedId(null);
+      setReady(true);
       return;
     }
+    let cancelled = false;
+    setReady(false);
     api.get(`/api/layouts/${id}`).then((row) => {
       const layout = row as Layout;
+      if (cancelled) return;
       if (!layout.is_studio) {
         setErr("This layout was not created in OMR Studio.");
+        setReady(true);
         return;
       }
+      const snapshot = hydrateStudioState(layout.studio_config, layout.studio_geometry, layout.studio_blocks as StudioBlock[]);
       setLayoutId(layout.id);
-      const nextConfig = { ...defaultConfig(), ...(layout.studio_config || {}) } as StudioConfig;
-      const nextGeo = { ...cloneGeometry(), ...(layout.studio_geometry || {}) } as SheetGeometry;
-      const nextBlocks = (layout.studio_blocks || []) as StudioBlock[];
-      setConfig(nextConfig);
-      setGeometry(nextGeo);
-      setBlocks(nextBlocks.length ? nextBlocks : buildDefaultBlocks(nextConfig, nextGeo));
+      setConfig(snapshot.config);
+      setGeometry(snapshot.geometry);
+      setBlocks(snapshot.blocks);
       setSelectedId(null);
+      setErr("");
+      setReady(true);
     }).catch((error) => {
+      if (cancelled) return;
       setErr(error instanceof Error ? error.message : "Could not load layout");
+      setReady(true);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
-    setDraft(selected ? { ...selected } : null);
-  }, [selectedId, selected]);
+    if (!selectedId) {
+      setDraft(null);
+      return;
+    }
+    const block = blocks.find((item) => item.id === selectedId);
+    setDraft(block ? { ...block } : null);
+  }, [selectedId]);
 
   const rebuild = (next: StudioConfig, nextGeo = geometry) => {
     setConfig(next);
@@ -91,6 +114,13 @@ export default function OmrStudio() {
     setBlocks(buildDefaultBlocks(next, nextGeo));
     setSelectedId(null);
     setJsonText("");
+  };
+
+  const patchConfig = (patch: Partial<StudioConfig>) => {
+    const next = { ...config, ...patch };
+    const changed = (Object.keys(patch) as (keyof StudioConfig)[]).some((key) => next[key] !== config[key]);
+    if (!changed) return;
+    rebuild(next);
   };
 
   const mapping = useMemo(() => mappingFromGeometry(blocks, geometry), [blocks, geometry]);
@@ -171,6 +201,10 @@ export default function OmrStudio() {
   const summary = qualitySummary(qa);
   const gap = geometry.cellMm - geometry.bubbleDiameterMm;
 
+  if (!ready) {
+    return <p className="muted">Loading layout…</p>;
+  }
+
   return (
     <div className="omr-studio">
       <aside className="omr-studio-sidebar no-print">
@@ -190,13 +224,13 @@ export default function OmrStudio() {
                 min={10}
                 max={200}
                 value={config.questionCount}
-                onChange={(e) => rebuild({ ...config, questionCount: Number(e.target.value) })}
+                onChange={(e) => patchConfig({ questionCount: Number(e.target.value) })}
               />
             </Field>
             <Field label="Columns">
               <select
                 value={config.questionColumns}
-                onChange={(e) => rebuild({ ...config, questionColumns: Number(e.target.value) })}
+                onChange={(e) => patchConfig({ questionColumns: Number(e.target.value) })}
               >
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                   <option key={n} value={n}>{n}</option>
@@ -206,20 +240,20 @@ export default function OmrStudio() {
             <Field label="Options">
               <select
                 value={config.optionSet}
-                onChange={(e) => rebuild({ ...config, optionSet: e.target.value as StudioConfig["optionSet"] })}
+                onChange={(e) => patchConfig({ optionSet: e.target.value as StudioConfig["optionSet"] })}
               >
                 <option value="ABCD">A–D</option>
                 <option value="ABCDE">A–E</option>
               </select>
             </Field>
             <Field label="Roll digits">
-              <input type="number" min={4} max={12} value={config.rollCols} onChange={(e) => rebuild({ ...config, rollCols: Number(e.target.value) })} />
+              <input type="number" min={4} max={12} value={config.rollCols} onChange={(e) => patchConfig({ rollCols: Number(e.target.value) })} />
             </Field>
             <Field label="Subject digits">
-              <input type="number" min={2} max={6} value={config.subjectCols} onChange={(e) => rebuild({ ...config, subjectCols: Number(e.target.value) })} />
+              <input type="number" min={2} max={6} value={config.subjectCols} onChange={(e) => patchConfig({ subjectCols: Number(e.target.value) })} />
             </Field>
             <Field label="Series digits">
-              <input type="number" min={2} max={6} value={config.seriesCols} onChange={(e) => rebuild({ ...config, seriesCols: Number(e.target.value) })} />
+              <input type="number" min={2} max={6} value={config.seriesCols} onChange={(e) => patchConfig({ seriesCols: Number(e.target.value) })} />
             </Field>
           </div>
         </fieldset>
