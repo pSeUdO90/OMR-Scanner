@@ -1,6 +1,6 @@
 export const LOGO_UPDATED_EVENT = "omr-logo-updated";
 
-export function brandingLogoUrl(rev = Date.now()) {
+export function brandingLogoUrl(rev = 1) {
   return `/api/branding/logo?v=${rev}`;
 }
 
