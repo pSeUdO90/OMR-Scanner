@@ -161,6 +161,7 @@ export default function ExamForm({
           <label className="exam-field-sm">Duration (Minutes)<input disabled={locked} type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></label>
         </div>
       </div>
+      <div className="exam-split-row">
       <div className="form-section">
         <h3>Assignment</h3>
         <div className="row">
@@ -188,13 +189,14 @@ export default function ExamForm({
           </label>
         </div>
       </div>
-      <div className="form-section">
+      <div className="form-section exam-marking-section">
         <h3>Marking Scheme</h3>
         <div className="row exam-marking-row">
           <label>Correct<input disabled={locked} type="number" step="0.5" value={form.correct_marks} onChange={(e) => setForm({ ...form, correct_marks: Number(e.target.value) })} /></label>
           <label>Wrong<input disabled={locked} type="number" step="0.5" value={form.wrong_marks} onChange={(e) => setForm({ ...form, wrong_marks: Number(e.target.value) })} /></label>
           <label>Left / Unattempted<input disabled={locked} type="number" step="0.5" value={form.unattempted_marks} onChange={(e) => setForm({ ...form, unattempted_marks: Number(e.target.value) })} /></label>
         </div>
+      </div>
       </div>
       <div className="form-section">
         <h3>OMR Layout</h3>

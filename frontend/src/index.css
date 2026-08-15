@@ -351,10 +351,29 @@ th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(
 .exam-form h3 {
   margin: 0;
   padding: 0;
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  font-weight: 650;
   color: var(--cyan);
+}
+.exam-split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.7fr);
+  gap: 0.85rem 1.1rem;
+  align-items: start;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+.exam-split-row .form-section {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.exam-marking-section {
+  padding-left: 1rem;
+  border-left: 1px solid var(--line);
+}
+@media (max-width: 900px) {
+  .exam-split-row { grid-template-columns: 1fr; }
+  .exam-marking-section { padding-left: 0; border-left: 0; }
 }
 .exam-form .row { gap: 0.55rem; }
 .exam-form label { gap: 0.18rem; font-size: 0.75rem; min-width: 7rem; }
