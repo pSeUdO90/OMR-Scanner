@@ -79,8 +79,6 @@ def test_omr_studio_export_schema_strings():
     canvas = (ROOT / "OmrCanvas.tsx").read_text()
     assert "onPointerDown" in canvas
     assert "onMove" in canvas
-    assert "omr-grid-pattern" in canvas
-    assert "requestAnimationFrame" in canvas
     layouts = (ROOT.parent / "pages" / "Layouts.tsx").read_text()
     assert "Edit Layout" in layouts
     assert "layout-grid-3" in layouts

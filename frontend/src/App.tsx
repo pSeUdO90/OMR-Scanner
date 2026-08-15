@@ -1,4 +1,4 @@
-import { lazy, Suspense, FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { AuthUser, useAuth } from "./auth";
@@ -10,6 +10,7 @@ import Students from "./pages/Students";
 import StudentView from "./pages/StudentView";
 import Subjects from "./pages/Subjects";
 import Layouts from "./pages/Layouts";
+import OmrStudio from "./pages/OmrStudio";
 import LayoutDetail from "./pages/LayoutDetail";
 import Exams from "./pages/Exams";
 import ExamDetail from "./pages/ExamDetail";
@@ -19,8 +20,6 @@ import Results from "./pages/Results";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Login from "./pages/Login";
-
-const OmrStudio = lazy(() => import("./pages/OmrStudio"));
 
 const NAV_ITEMS = [
   { to: "/", tab: "dashboard", label: "Dashboard", icon: "dashboard" as const, end: true },
@@ -91,7 +90,6 @@ export default function App() {
         </div>
       </nav>
       <main className="main">
-        <Suspense fallback={<p className="muted">Loading…</p>}>
         <Routes>
           <Route path="/" element={can(user, "dashboard") ? <Dashboard /> : <Navigate to={home} replace />} />
           <Route path="/students" element={<Guard tab="students" user={user}><Students /></Guard>} />
@@ -109,7 +107,6 @@ export default function App() {
           <Route path="/settings" element={<Guard tab="settings" user={user}><Settings /></Guard>} />
           <Route path="/users" element={<Guard tab="users" user={user}><Users /></Guard>} />
         </Routes>
-        </Suspense>
       </main>
       {profileOpen && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
