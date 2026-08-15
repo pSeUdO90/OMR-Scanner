@@ -54,7 +54,6 @@ export default function OmrStudio() {
   const [err, setErr] = useState("");
   const [qaOpen, setQaOpen] = useState(false);
   const [inUse, setInUse] = useState(false);
-  const selected = blocks.find((block) => block.id === selectedId) || null;
 
   useEffect(() => {
     document.documentElement.classList.add("omr-studio-active");
@@ -79,7 +78,7 @@ export default function OmrStudio() {
       const layout = row as Layout;
       if (cancelled) return;
       if (!layout.is_studio) {
-        setErr("This layout was not created in OMR Studio.");
+        setErr("This Layout Was Not Created In OMR Studio.");
         setReady(true);
         return;
       }
@@ -94,7 +93,7 @@ export default function OmrStudio() {
       setReady(true);
     }).catch((error) => {
       if (cancelled) return;
-      setErr(error instanceof Error ? error.message : "Could not load layout");
+      setErr(error instanceof Error ? error.message : "Could Not Load Layout");
       setReady(true);
     });
     return () => {
@@ -131,13 +130,6 @@ export default function OmrStudio() {
     return page ? mappingFromDom(page, blocks, geometry) : mapping;
   };
 
-  const copyJson = async () => {
-    const text = JSON.stringify(currentMapping(), null, 2);
-    setJsonText(text);
-    await navigator.clipboard.writeText(text);
-    setMsg("Mapping JSON copied.");
-  };
-
   const exportJson = () => {
     const text = JSON.stringify(currentMapping(), null, 2);
     setJsonText(text);
@@ -148,7 +140,7 @@ export default function OmrStudio() {
     a.download = `${config.title.replace(/\s+/g, "-").toLowerCase() || "omr-layout"}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setMsg("JSON file downloaded.");
+    setMsg("JSON File Downloaded.");
   };
 
   const saveLayout = async () => {
@@ -159,7 +151,7 @@ export default function OmrStudio() {
       const thumbnail_base64 = svg ? await captureSheetThumbnail(svg) : "";
       const payload = {
         name: config.title,
-        description: "A4 OMR Studio layout",
+        description: "A4 OMR Studio Layout",
         total_questions: config.questionCount,
         options: config.optionSet,
         config,
@@ -174,28 +166,28 @@ export default function OmrStudio() {
           : await api.post("/api/layouts/studio", payload)
       ) as Layout;
       setLayoutId(saved.id);
-      setMsg(`Saved “${saved.name}” to Saved layouts.`);
+      setMsg(`Saved “${saved.name}” To Saved Layouts.`);
       navigate("/layouts");
     } catch (error) {
-      setErr(error instanceof Error ? error.message : "Could not save layout");
+      setErr(error instanceof Error ? error.message : "Could Not Save Layout");
     }
   };
 
-  const patchBlock = (patch: Partial<StudioBlock>) => {
-    if (!selectedId || inUse) return;
-    setBlocks((current) => current.map((block) => (block.id === selectedId ? { ...block, ...patch } : block)));
+  const patchBlock = (id: string, patch: Partial<StudioBlock>) => {
+    if (inUse) return;
+    setBlocks((current) => current.map((block) => (block.id === id ? { ...block, ...patch } : block)));
   };
 
-  const deleteBlock = async () => {
-    if (!selected || inUse) return;
+  const deleteBlock = async (block: StudioBlock) => {
+    if (inUse) return;
     const ok = await confirm({
       title: "Delete",
-      message: `Delete “${selected.label}”? This cannot be undone.`,
+      message: `Delete “${block.label}”? This Cannot Be Undone.`,
     });
     if (!ok) return;
-    setBlocks(blocks.filter((block) => block.id !== selected.id));
-    setSelectedId(null);
-    setMsg("Block deleted.");
+    setBlocks(blocks.filter((item) => item.id !== block.id));
+    if (selectedId === block.id) setSelectedId(null);
+    setMsg("Block Deleted.");
   };
 
   const qa = qaOpen ? runQualityCheck(geometry, blocks) : [];
@@ -203,25 +195,23 @@ export default function OmrStudio() {
   const gap = geometry.cellMm - geometry.bubbleDiameterMm;
 
   if (!ready) {
-    return <p className="muted">Loading layout…</p>;
+    return <p className="muted">Loading Layout…</p>;
   }
 
   return (
     <div className="omr-studio">
-      <div className="omr-studio-head no-print">
-        <p className="muted"><Link to="/layouts">← OMR layouts</Link></p>
+      <aside className="omr-studio-sidebar no-print">
+        <p className="muted"><Link to="/layouts">← OMR Layouts</Link></p>
         <h2>A4 OMR Studio</h2>
-        <p className="muted omr-hint">Drag a block on the sheet to place it. Position snaps to the grid.</p>
+        <p className="muted omr-hint">Drag A Block On The Sheet To Place It. Position Snaps To The Grid.</p>
         {inUse && (
           <p className="notice">
-            Layout Associated with Exam. Cannot be Modified. Copy it from OMR Layouts to edit a new version.
+            Layout Associated With Exam. Cannot Be Modified. Copy It From OMR Layouts To Edit A New Version.
           </p>
         )}
         {msg && <p className="omr-hint">{msg}</p>}
         {err && <p className="error">{err}</p>}
-      </div>
 
-      <div className="omr-studio-toolbar no-print">
         <fieldset className="omr-set">
           <legend>Sheet</legend>
           <Field label="Title">
@@ -259,13 +249,13 @@ export default function OmrStudio() {
                 <option value="ABCDE">A–E</option>
               </select>
             </Field>
-            <Field label="Roll digits">
+            <Field label="Roll Digits">
               <input disabled={inUse} type="number" min={4} max={12} value={config.rollCols} onChange={(e) => patchConfig({ rollCols: Number(e.target.value) })} />
             </Field>
-            <Field label="Subject digits">
+            <Field label="Subject Digits">
               <input disabled={inUse} type="number" min={2} max={6} value={config.subjectCols} onChange={(e) => patchConfig({ subjectCols: Number(e.target.value) })} />
             </Field>
-            <Field label="Series digits">
+            <Field label="Series Digits">
               <input disabled={inUse} type="number" min={2} max={6} value={config.seriesCols} onChange={(e) => patchConfig({ seriesCols: Number(e.target.value) })} />
             </Field>
           </div>
@@ -274,31 +264,31 @@ export default function OmrStudio() {
         <fieldset className="omr-set">
           <legend>Page</legend>
           <div className="omr-grid-2">
-            <Field label="Width mm">
+            <Field label="Width Mm">
               <input disabled={inUse} type="number" min={50} step={0.1} value={geometry.pageWidthMm} onChange={(e) => patchGeometry({ pageWidthMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Height mm">
+            <Field label="Height Mm">
               <input disabled={inUse} type="number" min={50} step={0.1} value={geometry.pageHeightMm} onChange={(e) => patchGeometry({ pageHeightMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Margin top mm">
+            <Field label="Margin Top Mm">
               <input disabled={inUse} type="number" min={0} step={0.5} value={geometry.marginTopMm} onChange={(e) => patchGeometry({ marginTopMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Margin right mm">
+            <Field label="Margin Right Mm">
               <input disabled={inUse} type="number" min={0} step={0.5} value={geometry.marginRightMm} onChange={(e) => patchGeometry({ marginRightMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Margin bottom mm">
+            <Field label="Margin Bottom Mm">
               <input disabled={inUse} type="number" min={0} step={0.5} value={geometry.marginBottomMm} onChange={(e) => patchGeometry({ marginBottomMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Margin left mm">
+            <Field label="Margin Left Mm">
               <input disabled={inUse} type="number" min={0} step={0.5} value={geometry.marginLeftMm} onChange={(e) => patchGeometry({ marginLeftMm: Number(e.target.value) })} />
             </Field>
           </div>
         </fieldset>
 
         <fieldset className="omr-set">
-          <legend>Grid matrix unit</legend>
+          <legend>Grid Matrix Unit</legend>
           <div className="omr-grid-2">
-            <Field label="Cell mm">
+            <Field label="Cell Mm">
               <input disabled={inUse} type="number" min={2} step={0.1} value={geometry.cellMm} onChange={(e) => patchGeometry({ cellMm: Number(e.target.value) })} />
             </Field>
             <Field label="Cols">
@@ -311,43 +301,37 @@ export default function OmrStudio() {
         </fieldset>
 
         <fieldset className="omr-set">
-          <legend>OMR bubble</legend>
+          <legend>OMR Bubble</legend>
           <div className="omr-grid-2">
-            <Field label="Diameter mm">
+            <Field label="Diameter Mm">
               <input disabled={inUse} type="number" min={1} step={0.1} value={geometry.bubbleDiameterMm} onChange={(e) => patchGeometry({ bubbleDiameterMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Target gap mm">
+            <Field label="Target Gap Mm">
               <input disabled={inUse} type="number" min={0} step={0.1} value={geometry.bubbleGapMm} onChange={(e) => patchGeometry({ bubbleGapMm: Number(e.target.value) })} />
             </Field>
           </div>
-          <p className="muted omr-hint">Actual gap {gap.toFixed(2)} mm</p>
+          <p className="muted omr-hint">Actual Gap {gap.toFixed(2)} Mm</p>
         </fieldset>
 
         <fieldset className="omr-set">
-          <legend>Corner markers</legend>
+          <legend>Timing Tracks &amp; Corner Markers</legend>
           <div className="omr-grid-2">
-            <Field label="Size mm">
+            <Field label="Marker Size Mm">
               <input disabled={inUse} type="number" min={2} step={0.1} value={geometry.fiducialMm} onChange={(e) => patchGeometry({ fiducialMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Inset mm">
+            <Field label="Marker Inset Mm">
               <input disabled={inUse} type="number" min={0} step={0.1} value={geometry.fiducialInsetMm} onChange={(e) => patchGeometry({ fiducialInsetMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Keep-out mm">
+            <Field label="Keep-Out Mm">
               <input disabled={inUse} type="number" min={0} step={0.1} value={geometry.fiducialKeepoutMm} onChange={(e) => patchGeometry({ fiducialKeepoutMm: Number(e.target.value) })} />
             </Field>
-          </div>
-        </fieldset>
-
-        <fieldset className="omr-set">
-          <legend>Timing tracks</legend>
-          <div className="omr-grid-2">
-            <Field label="Width mm">
+            <Field label="Track Width Mm">
               <input disabled={inUse} type="number" min={1} step={0.1} value={geometry.timingWidthMm} onChange={(e) => patchGeometry({ timingWidthMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Height mm">
+            <Field label="Track Height Mm">
               <input disabled={inUse} type="number" min={0.5} step={0.1} value={geometry.timingHeightMm} onChange={(e) => patchGeometry({ timingHeightMm: Number(e.target.value) })} />
             </Field>
-            <Field label="Extra rows">
+            <Field label="Extra Rows">
               <input disabled={inUse} type="number" min={0} max={20} value={geometry.extraTimingRows} onChange={(e) => patchGeometry({ extraTimingRows: Number(e.target.value) })} />
             </Field>
           </div>
@@ -358,97 +342,127 @@ export default function OmrStudio() {
               checked={geometry.syncTimingToBubbleRows}
               onChange={(e) => patchGeometry({ syncTimingToBubbleRows: e.target.checked })}
             />
-            Sync with horizontal bubble rows
+            Sync With Horizontal Bubble Rows
           </label>
         </fieldset>
 
-        <div className="omr-set omr-studio-actions-set">
-          <label className="omr-check">
-            <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-            Show grid (screen)
-          </label>
-          <div className="omr-actions omr-toolbar-actions">
-            <button type="button" disabled={inUse} className="secondary" onClick={() => setBlocks(addDigitBlock(blocks, "Custom ID", geometry))}>
-              Add metadata block
-            </button>
-            <button type="button" onClick={() => window.print()}>Print sheet</button>
-            <button type="button" className="secondary" onClick={exportJson}>Export JSON</button>
-            <button type="button" className="secondary" onClick={copyJson}>Copy JSON</button>
-            <button type="button" className="secondary" onClick={() => setQaOpen(true)}>Quality check</button>
-            <button type="button" disabled={inUse} className="secondary" onClick={() => {
-              saveStudioDefault({ config, geometry, blocks });
-              setMsg("Current values saved as the default OMR Studio layout.");
-            }}>Save as default</button>
-            <button type="button" onClick={saveLayout} disabled={inUse}>Save</button>
-          </div>
+        <label className="omr-check">
+          <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+          Show Grid (Screen)
+        </label>
+
+        <div className="omr-actions">
+          <button type="button" disabled={inUse} className="secondary" onClick={() => setBlocks(addDigitBlock(blocks, "Custom ID", geometry))}>
+            Add Block
+          </button>
+          <button type="button" onClick={() => window.print()}>Print Sheet</button>
+          <button type="button" className="secondary" onClick={exportJson}>Export JSON</button>
+          <button type="button" className="secondary" onClick={() => setQaOpen(true)}>Quality Check</button>
+          <button type="button" disabled={inUse} className="secondary" onClick={() => {
+            saveStudioDefault({ config, geometry, blocks });
+            setMsg("Current Values Saved As The Default OMR Studio Layout.");
+          }}>Save As Default</button>
+          <button type="button" onClick={saveLayout} disabled={inUse}>Save</button>
+        </div>
+        {jsonText && <textarea className="omr-json" readOnly value={jsonText} rows={8} />}
+      </aside>
+
+      <div className="omr-studio-stage" onClick={() => setSelectedId(null)}>
+        <div className="omr-a4-frame" ref={pageRef} onClick={(e) => e.stopPropagation()}>
+          <OmrCanvas
+            title={config.title}
+            blocks={blocks}
+            selectedId={selectedId}
+            showGrid={showGrid}
+            geometry={geometry}
+            onSelect={setSelectedId}
+            onMove={(id, col0, row0) => {
+              if (inUse) return;
+              patchBlock(id, { col0, row0 });
+            }}
+          />
         </div>
       </div>
 
-      <div className="omr-studio-canvas-row">
-        <div className="omr-studio-stage" onClick={() => setSelectedId(null)}>
-          <div className="omr-a4-frame" ref={pageRef} onClick={(e) => e.stopPropagation()}>
-            <OmrCanvas
-              title={config.title}
-              blocks={blocks}
-              selectedId={selectedId}
-              showGrid={showGrid}
-              geometry={geometry}
-              onSelect={setSelectedId}
-              onMove={(id, col0, row0) => {
-                if (inUse) return;
-                setBlocks((current) => current.map((block) => (block.id === id ? { ...block, col0, row0 } : block)));
-              }}
-            />
-          </div>
-        </div>
-        {selected && (
-          <div className="omr-inspector no-print">
-            <h3>Block</h3>
-            <div className="omr-grid-2">
-              <Field label="Label">
-                <input disabled={inUse} value={selected.label} onChange={(e) => patchBlock({ label: e.target.value })} />
-              </Field>
-              <Field label="blockId">
-                <input disabled={inUse} value={selected.blockId} onChange={(e) => patchBlock({ blockId: e.target.value })} />
-              </Field>
-              <Field label="DB binding">
-                <input disabled={inUse} value={selected.dbColumnBinding} onChange={(e) => patchBlock({ dbColumnBinding: e.target.value })} />
-              </Field>
-              <Field label="Col">
-                <input disabled={inUse} type="number" value={selected.col0} onChange={(e) => patchBlock({ col0: Number(e.target.value) })} />
-              </Field>
-              <Field label="Row">
-                <input disabled={inUse} type="number" value={selected.row0} onChange={(e) => patchBlock({ row0: Number(e.target.value) })} />
-              </Field>
-              <Field label="Width">
-                <input disabled={inUse} type="number" value={selected.cols} onChange={(e) => patchBlock({ cols: Number(e.target.value) })} />
-              </Field>
-              <Field label="Height">
-                <input disabled={inUse} type="number" value={selected.rows} onChange={(e) => patchBlock({ rows: Number(e.target.value) })} />
-              </Field>
-              {selected.blockType === "GRID_MCQ" && (
-                <>
-                  <Field label="Start Q">
-                    <input disabled={inUse} type="number" value={selected.startQ || 1} onChange={(e) => patchBlock({ startQ: Number(e.target.value) })} />
-                  </Field>
-                  <Field label="Options">
-                    <input disabled={inUse} value={selected.options || "ABCD"} onChange={(e) => patchBlock({ options: e.target.value })} />
-                  </Field>
-                </>
-              )}
-            </div>
-            <DeleteButton disabled={inUse} onClick={deleteBlock} />
+      <section className="omr-blocks-panel no-print">
+        <h3>Blocks</h3>
+        {blocks.length === 0 ? (
+          <p className="muted">No Blocks Added.</p>
+        ) : (
+          <div className="omr-blocks-table-wrap">
+            <table className="omr-blocks-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Block Id</th>
+                  <th>Type</th>
+                  <th>DB Binding</th>
+                  <th>Col</th>
+                  <th>Row</th>
+                  <th>Width</th>
+                  <th>Height</th>
+                  <th>Start Q</th>
+                  <th>Options</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {blocks.map((block) => (
+                  <tr
+                    key={block.id}
+                    className={block.id === selectedId ? "selected" : ""}
+                    onClick={() => setSelectedId(block.id)}
+                  >
+                    <td>
+                      <input disabled={inUse} value={block.label} onChange={(e) => patchBlock(block.id, { label: e.target.value })} />
+                    </td>
+                    <td>
+                      <input disabled={inUse} value={block.blockId} onChange={(e) => patchBlock(block.id, { blockId: e.target.value })} />
+                    </td>
+                    <td>{block.blockType}</td>
+                    <td>
+                      <input disabled={inUse} value={block.dbColumnBinding} onChange={(e) => patchBlock(block.id, { dbColumnBinding: e.target.value })} />
+                    </td>
+                    <td>
+                      <input disabled={inUse} type="number" value={block.col0} onChange={(e) => patchBlock(block.id, { col0: Number(e.target.value) })} />
+                    </td>
+                    <td>
+                      <input disabled={inUse} type="number" value={block.row0} onChange={(e) => patchBlock(block.id, { row0: Number(e.target.value) })} />
+                    </td>
+                    <td>
+                      <input disabled={inUse} type="number" value={block.cols} onChange={(e) => patchBlock(block.id, { cols: Number(e.target.value) })} />
+                    </td>
+                    <td>
+                      <input disabled={inUse} type="number" value={block.rows} onChange={(e) => patchBlock(block.id, { rows: Number(e.target.value) })} />
+                    </td>
+                    <td>
+                      {block.blockType === "GRID_MCQ" ? (
+                        <input disabled={inUse} type="number" value={block.startQ || 1} onChange={(e) => patchBlock(block.id, { startQ: Number(e.target.value) })} />
+                      ) : "—"}
+                    </td>
+                    <td>
+                      {block.blockType === "GRID_MCQ" ? (
+                        <input disabled={inUse} value={block.options || "ABCD"} onChange={(e) => patchBlock(block.id, { options: e.target.value })} />
+                      ) : "—"}
+                    </td>
+                    <td>
+                      <DeleteButton disabled={inUse} onClick={(event) => { event.stopPropagation(); deleteBlock(block); }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
-      {jsonText && <textarea className="omr-json no-print" readOnly value={jsonText} rows={8} />}
+      </section>
+
       {qaOpen && (
         <div className="modal-backdrop" onClick={() => setQaOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Quality check</h3>
+            <h3>Quality Check</h3>
             <p className="muted">
-              {summary.passed ? "Ready to save." : "Fix failures before printing."}
-              {" "}{summary.ok} ok · {summary.warn} warn · {summary.fail} fail
+              {summary.passed ? "Ready To Save." : "Fix Failures Before Printing."}
+              {" "}{summary.ok} Ok · {summary.warn} Warn · {summary.fail} Fail
             </p>
             <ul className="qa-list">
               {qa.map((item) => (

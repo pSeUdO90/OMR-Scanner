@@ -59,8 +59,15 @@ def test_omr_studio_export_schema_strings():
     studio = (ROOT.parent / "pages" / "OmrStudio.tsx").read_text()
     assert "[1, 2, 3, 4, 5, 6]" in studio
     assert "Export JSON" in studio
-    assert "Quality check" in studio
-    assert "Sync with horizontal bubble rows" in studio
+    assert "Copy JSON" not in studio
+    assert "Quality Check" in studio
+    assert "Sync With Horizontal Bubble Rows" in studio
+    assert "Add Block" in studio
+    assert "Add metadata block" not in studio
+    assert "Timing Tracks" in studio
+    assert "Corner Markers" in studio
+    assert 'legend>Timing tracks</legend>' not in studio
+    assert "omr-blocks-table" in studio
     canvas = (ROOT / "OmrCanvas.tsx").read_text()
     assert "onPointerDown" in canvas
     assert "onMove" in canvas
@@ -72,15 +79,16 @@ def test_omr_studio_export_schema_strings():
     assert "Design A4 OMR sheet" not in layouts
     assert ">Copy<" in layouts.replace(" ", "") or "Copy" in layouts
     assert "sample_rev" in layouts
-    assert "Save as default" in studio
-    assert "Loading layout" in studio
+    assert "Save As Default" in studio
+    assert "Loading Layout" in studio
     assert "Save block" not in studio
-    assert "Margin top mm" in studio
+    assert "Margin Top Mm" in studio
     assert "DeleteButton" in studio
     assert "patchBlock" in studio
     css = (ROOT.parent / "index.css").read_text()
-    assert "omr-studio-sidebar" not in css
+    assert "omr-studio-sidebar" in css
     assert "max-height: calc(100vh - 2.5rem)" not in css
+    assert "overflow: auto" not in css.split(".omr-studio-sidebar")[1].split(".omr-blocks-panel")[0]
     assert "hydrateStudioState" in (ROOT / "studioDefaults.ts").read_text()
     assert "saveStudioDefault" in (ROOT / "studioDefaults.ts").read_text()
     assert "captureSheetThumbnail" in (ROOT / "thumbnail.ts").read_text()
