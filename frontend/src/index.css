@@ -138,20 +138,70 @@ button.ghost, .btn.ghost { background: transparent; color: var(--sunset); border
   text-decoration: none;
 }
 .row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
-.answer-key-toolbar { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: start; margin-bottom: 0.8rem; }
+.answer-key-heading { display: flex; align-items: center; gap: 0.85rem; min-width: 0; flex: 1; }
 details.answer-key-card > summary {
   list-style: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
 }
 details.answer-key-card > summary::-webkit-details-marker { display: none; }
-details.answer-key-card > summary::before {
-  content: "▸";
-  display: inline-block;
-  margin-right: 0.45rem;
-  color: var(--cyan);
-  transform: translateY(0.15rem);
+details.answer-key-card > summary::before { content: none; }
+.answer-key-toggle {
+  flex: 0 0 3.25rem;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.7rem;
+  background: rgba(16, 187, 195, 0.16);
+  border: 2px solid var(--cyan);
+  position: relative;
 }
-details.answer-key-card[open] > summary::before { content: "▾"; }
+.answer-key-toggle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-right: 0.28rem solid var(--cyan);
+  border-bottom: 0.28rem solid var(--cyan);
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+details.answer-key-card[open] > summary .answer-key-toggle::after {
+  top: 38%;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+details.answer-key-card[open] > summary { margin-bottom: 0.8rem; }
+.eval-split-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.eval-compact-card {
+  margin-bottom: 0;
+  padding: 0.75rem 0.9rem;
+}
+.eval-compact-card h3 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+.eval-compact-card .muted { margin: 0 0 0.45rem; font-size: 0.75rem; }
+.eval-inline-fields {
+  display: flex;
+  gap: 0.45rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.eval-inline-fields label { flex: 1 1 10rem; min-width: 8rem; margin: 0; }
+.eval-inline-fields button,
+.eval-inline-fields .btn {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0.38rem 0.75rem;
+  font-size: 0.82rem;
+}
+@media (max-width: 860px) {
+  .eval-split-row { grid-template-columns: 1fr; }
+}
 .key-block { margin: 0.8rem 0 1.1rem; }
 .key-block h4 { color: var(--cyan); font-size: 1.35rem; margin-bottom: 0.55rem; font-weight: 700; }
 .key-opts {

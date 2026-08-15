@@ -127,11 +127,12 @@ export default function EvaluationPanel({
 
   return (
     <>
-      <details className="card answer-key-card" open>
+      <details className="card answer-key-card">
         <summary className="answer-key-toolbar">
+          <span className="answer-key-toggle" aria-hidden="true" />
           <div>
-            <h3>Answer key</h3>
-            <p className="muted">Tap A–D for each question. Sheets re-evaluate as soon as the key is saved. {filled}/{total} marked.</p>
+            <h3>Answer Key</h3>
+            <p className="muted">Tap A–D For Each Question. Sheets Re-Evaluate When The Key Is Saved. {filled}/{total} Marked.</p>
           </div>
           <div className="row" style={{ flex: "0 0 auto" }} onClick={(e) => e.stopPropagation()}>
             <input
@@ -187,68 +188,71 @@ export default function EvaluationPanel({
           </section>
         ))}
       </details>
-      <div className="card">
-        <h3>Grace questions</h3>
-        <p className="muted">Enter question numbers that receive grace (full marks). Use commas or ranges, for example 12, 18, 40-42.</p>
-        <label>
-          Question numbers
+      <div className="eval-split-row">
+        <div className="card eval-compact-card">
+          <h3>Grace Questions</h3>
+          <p className="muted">Question numbers with full marks. Use commas or ranges, for example 12, 18, 40-42.</p>
+          <div className="eval-inline-fields">
+            <label>
+              Question Numbers
+              <input
+                value={graceText}
+                onChange={(e) => setGraceText(e.target.value)}
+                placeholder="e.g. 12, 18, 40-42"
+              />
+            </label>
+            <button
+              type="button"
+              className="secondary"
+              onClick={async () => {
+                setErr("");
+                try {
+                  await api.put(`/api/exams/${id}/grace`, { questions: graceText });
+                  setMsg("Grace Questions Saved.");
+                  onReload();
+                } catch (error) {
+                  setErr(error instanceof Error ? error.message : "Could not save grace questions");
+                }
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+        <div className="card eval-compact-card">
+          <h3>Upload Scanned OMR Sheets</h3>
           <input
-            value={graceText}
-            onChange={(e) => setGraceText(e.target.value)}
-            placeholder="e.g. 12, 18, 40-42"
-          />
-        </label>
-        <p>
-          <button
-            type="button"
-            className="secondary"
-            onClick={async () => {
-              setErr("");
+            ref={scanRef}
+            type="file"
+            multiple
+            accept="image/*"
+            hidden
+            onChange={async (e) => {
+              if (!e.target.files?.length) return;
+              const data = new FormData();
+              for (const file of Array.from(e.target.files)) data.append("files", file);
               try {
-                await api.put(`/api/exams/${id}/grace`, { questions: graceText });
-                setMsg("Grace questions saved.");
+                await fetch(`/api/exams/${id}/sheets`, { method: "POST", body: data }).then((r) => {
+                  if (!r.ok) throw new Error("Upload failed");
+                  return r.json();
+                });
+                setMsg(`Uploaded ${e.target.files.length} sheet(s).`);
                 onReload();
               } catch (error) {
-                setErr(error instanceof Error ? error.message : "Could not save grace questions");
+                setErr(error instanceof Error ? error.message : "Upload failed");
               }
             }}
-          >
-            Save grace questions
-          </button>
-        </p>
-      </div>
-      <div className="card">
-        <h3>Upload scanned OMR sheets</h3>
-        <input
-          ref={scanRef}
-          type="file"
-          multiple
-          accept="image/*"
-          hidden
-          onChange={async (e) => {
-            if (!e.target.files?.length) return;
-            const data = new FormData();
-            for (const file of Array.from(e.target.files)) data.append("files", file);
-            try {
-              await fetch(`/api/exams/${id}/sheets`, { method: "POST", body: data }).then((r) => {
-                if (!r.ok) throw new Error("Upload failed");
-                return r.json();
-              });
-              setMsg(`Uploaded ${e.target.files.length} sheet(s).`);
-              onReload();
-            } catch (error) {
-              setErr(error instanceof Error ? error.message : "Upload failed");
-            }
-          }}
-        />
-        <button type="button" onClick={() => scanRef.current?.click()}>
-          Upload scanned OMR sheets
-        </button>
-        {" "}
-        <a className="btn secondary" href={`/api/exams/${id}/prefilled-omr`}>
-          Generate Pre-Filled OMR
-        </a>
-        <p className="muted">Uses the OMR layout PDF/JPG attached to this exam. Student name, roll number, Test No, Test ID, and exam date are filled for every assigned student.</p>
+          />
+          <div className="eval-inline-fields">
+            <button type="button" onClick={() => scanRef.current?.click()}>
+              Upload Sheets
+            </button>
+            <a className="btn secondary" href={`/api/exams/${id}/prefilled-omr`}>
+              Generate Pre-Filled OMR
+            </a>
+          </div>
+          <p className="muted">Fills name, roll, Test No, Test ID, and date for assigned students from the exam layout.</p>
+        </div>
       </div>
       <div className="card">
         <div className="row">
