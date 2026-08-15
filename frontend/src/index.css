@@ -334,15 +334,66 @@ th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(
   object-fit: contain;
   background: #061e32;
 }
-.exam-form { display: flex; flex-direction: column; gap: 1.4rem; }
-.exam-form .form-section { display: flex; flex-direction: column; gap: 0.9rem; }
+.exam-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+}
+.exam-form .form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+.exam-form .form-section:last-of-type { border-bottom: 0; padding-bottom: 0; }
 .exam-form h3 {
   margin: 0;
-  padding-top: 0.35rem;
-  font-size: 1rem;
+  padding: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--cyan);
 }
-.exam-form .row { gap: 1rem; }
+.exam-form .row { gap: 0.55rem; }
+.exam-form label { gap: 0.18rem; font-size: 0.75rem; min-width: 7rem; }
+.exam-form input,
+.exam-form select,
+.exam-form .check-dropdown-toggle {
+  padding: 0.38rem 0.5rem;
+  border-radius: 8px;
+}
+.exam-field-sm { flex: 0 1 8.5rem; min-width: 7rem; }
+.exam-field-md { flex: 0 1 11rem; min-width: 8.5rem; }
+.exam-marking-row label { flex: 0 1 8.5rem; max-width: 11rem; }
+.layout-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.layout-picks button {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0.32rem 0.75rem;
+  font-size: 0.8rem;
+}
+.exam-layout-note { margin: 0; font-size: 0.75rem; }
+.exam-maps { display: flex; flex-direction: column; gap: 0.4rem; }
+.exam-maps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.exam-maps-head .ghost {
+  width: auto;
+  align-self: center;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.78rem;
+}
+.exam-form-actions { margin: 0.15rem 0 0; }
+.exam-form-actions button { width: auto; }
 .check-dropdown { position: relative; }
 .check-dropdown-toggle {
   display: flex;

@@ -19,9 +19,25 @@ export default function SubjectMapsEditor({
     setMaps(next);
   };
   return (
-    <>
-      <h3>Questions per subject</h3>
-      <p className="muted">Map each subject to its question range on this OMR.</p>
+    <div className="exam-maps">
+      <div className="exam-maps-head">
+        <h3>Questions Per Subject</h3>
+        {!locked && (
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setMaps([...maps, {
+              subject_id: subjects[0]?.id,
+              subject: subjects[0]?.name || "Paper",
+              start_q: maps.length ? maps[maps.length - 1].end_q + 1 : 1,
+              end_q: maps.length ? maps[maps.length - 1].end_q + 10 : 10,
+            }])}
+          >
+            Add Subject Range
+          </button>
+        )}
+      </div>
+      <p className="muted">Map Each Subject To Its Question Range On This OMR.</p>
       {maps.map((m, i) => (
         <div className="row" key={i}>
           <label>Subject
@@ -41,29 +57,15 @@ export default function SubjectMapsEditor({
               {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          <label>Start question
+          <label className="exam-field-sm">Start Q
             <input disabled={locked} type="number" min={1} value={m.start_q} onChange={(e) => update(i, { start_q: Number(e.target.value) })} />
           </label>
-          <label>End question
+          <label className="exam-field-sm">End Q
             <input disabled={locked} type="number" min={1} value={m.end_q} onChange={(e) => update(i, { end_q: Number(e.target.value) })} />
           </label>
-          <label>No. of questions<input readOnly value={Math.max(0, m.end_q - m.start_q + 1)} /></label>
+          <label className="exam-field-sm">No. Of Questions<input readOnly value={Math.max(0, m.end_q - m.start_q + 1)} /></label>
         </div>
       ))}
-      {!locked && (
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => setMaps([...maps, {
-            subject_id: subjects[0]?.id,
-            subject: subjects[0]?.name || "Paper",
-            start_q: maps.length ? maps[maps.length - 1].end_q + 1 : 1,
-            end_q: maps.length ? maps[maps.length - 1].end_q + 10 : 10,
-          }])}
-        >
-          Add subject range
-        </button>
-      )}
-    </>
+    </div>
   );
 }
