@@ -431,6 +431,10 @@ def test_studio_layout_saves_mapping_json():
     assert any(item["id"] == row["id"] and item["is_studio"] and item["has_sample"] for item in listed)
     sample = client.get(f"/api/layouts/{row['id']}/sample")
     assert sample.status_code == 200
+    pdf = client.get(f"/api/layouts/{row['id']}/blank-sheet.pdf")
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content[:4] == b"%PDF"
+    assert "inline" in pdf.headers.get("content-disposition", "").lower()
     stored = SessionLocal().query(OmrLayout).filter(OmrLayout.id == row["id"]).one()
     config = json.loads(stored.config_json)
     assert config["studio"] is True

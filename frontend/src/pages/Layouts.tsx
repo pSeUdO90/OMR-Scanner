@@ -115,6 +115,9 @@ export default function Layouts() {
                 ) : (
                   <EditLink to={`/layouts/${layout.id}?tab=map`}>Map blocks</EditLink>
                 )}
+                <a className="btn-view" href={`/api/layouts/${layout.id}/blank-sheet.pdf`} target="_blank" rel="noreferrer">
+                  Print PDF
+                </a>
                 <button
                   type="button"
                   className="secondary"

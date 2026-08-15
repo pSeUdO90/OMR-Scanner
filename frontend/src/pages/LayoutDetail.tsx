@@ -110,13 +110,11 @@ export default function LayoutDetail() {
               <div>
                 <p className="muted">{layout.description}</p>
                 <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
-                {(layout.blocks || []).length > 0 && (
-                  <p>
-                    <a href={`/api/layouts/${layout.id}/blank-sheet.pdf`}>Download A4 OMR (PDF)</a>
+                <p>
+                    <a href={`/api/layouts/${layout.id}/blank-sheet.pdf`} target="_blank" rel="noreferrer">Print PDF</a>
                     {" · "}
                     <a href={`/api/layouts/${layout.id}/blank-sheet`}>Download JPG</a>
                   </p>
-                )}
                 <ul>
                   {(layout.preview?.default_maps || []).map((m) => (
                     <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>

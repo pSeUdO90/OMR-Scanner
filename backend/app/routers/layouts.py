@@ -16,6 +16,7 @@ from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
 from ..omr.analyze import analyze_layout_config, analysis_from_blocks
 from ..omr.generator import generate_designed_sheet
+from ..omr.studio_render import generate_studio_sheet
 from ..omr.layouts import (
     RETIRED_LAYOUT_SLUGS,
     a4_design_layout,
@@ -519,6 +520,8 @@ def layout_sample(layout_id: int, db: Session = Depends(get_db)):
 
 def _blank_sheet_image(row: OmrLayout):
     config = json.loads(row.config_json)
+    if config.get("studio"):
+        return generate_studio_sheet(config)
     return generate_designed_sheet(config)
 
 
@@ -545,5 +548,5 @@ def layout_blank_sheet_pdf(layout_id: int, db: Session = Depends(get_db)):
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{row.slug}-a4-omr.pdf"'},
+        headers={"Content-Disposition": f'inline; filename="{row.slug}-a4-omr.pdf"'},
     )

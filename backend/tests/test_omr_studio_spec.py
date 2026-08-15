@@ -85,7 +85,8 @@ def test_omr_studio_export_schema_strings():
     assert "Create a new layout" not in layouts
     assert "ViewLink" not in layouts
     assert "Design A4 OMR sheet" not in layouts
-    assert ">Copy<" in layouts.replace(" ", "") or "Copy" in layouts
+    assert "Print PDF" in layouts
+    assert "blank-sheet.pdf" in layouts
     assert "sample_rev" in layouts
     assert "Save As Default" in studio
     assert "Loading Layout" in studio
