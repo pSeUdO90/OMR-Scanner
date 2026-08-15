@@ -1,4 +1,5 @@
 import type { DataBlock } from "./blockKinds";
+import { showToast } from "./components/ToastProvider";
 
 export type { DataBlock };
 export { BLOCK_KINDS, FIELD_TARGETS } from "./blockKinds";
@@ -31,9 +32,32 @@ const json = async (res: Response) => {
   }
   if (!res.ok) {
     const detail = typeof data === "object" && data && "detail" in data ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : text || res.statusText);
+    const message = typeof detail === "string" ? detail : text || res.statusText;
+    if (!res.url.includes("/api/settings/folders")) {
+      showToast("error", message);
+    }
+    throw new Error(message);
   }
   return data;
+};
+
+const skipSuccessToast = (path: string) =>
+  path.includes("/api/auth/login") ||
+  path.includes("/api/auth/logout") ||
+  path.includes("/api/auth/me") ||
+  path.includes("/import/preview");
+
+const toastSuccess = (path: string, fallback: string) => {
+  if (skipSuccessToast(path)) return;
+  if (path.includes("/reset-password")) {
+    showToast("ok", "Password reset to 123456");
+    return;
+  }
+  if (path.includes("/auth/password")) {
+    showToast("ok", "Password updated");
+    return;
+  }
+  showToast("ok", fallback);
 };
 
 const headersFor = (body?: unknown) => {
@@ -51,14 +75,24 @@ export const api = {
       method: "POST",
       headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body ?? {}),
-    }).then(json),
+    }).then(json).then((data) => {
+      toastSuccess(path, "Task completed");
+      return data;
+    }),
   put: (path: string, body: unknown) =>
     fetch(path, {
       method: "PUT",
       headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body),
-    }).then(json),
-  del: (path: string) => fetch(path, { method: "DELETE", headers: headersFor() }).then(json),
+    }).then(json).then((data) => {
+      toastSuccess(path, "Task completed");
+      return data;
+    }),
+  del: (path: string) =>
+    fetch(path, { method: "DELETE", headers: headersFor() }).then(json).then((data) => {
+      toastSuccess(path, "Task completed");
+      return data;
+    }),
 };
 
 export type Student = {

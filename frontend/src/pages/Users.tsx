@@ -75,7 +75,28 @@ export default function Users() {
                 <td>{row.display_name}</td>
                 <td>{row.role}</td>
                 <td>{row.is_active ? "Active" : "Disabled"}</td>
-                <td>
+                <td className="row-actions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Reset password",
+                        message: `Reset password for “${row.username}” to 123456? They will need to sign in again.`,
+                        confirmLabel: "Reset",
+                      });
+                      if (!ok) return;
+                      setErr("");
+                      try {
+                        await api.post(`/api/users/${row.id}/reset-password`);
+                        load();
+                      } catch (error) {
+                        setErr(error instanceof Error ? error.message : "Could not reset password");
+                      }
+                    }}
+                  >
+                    Reset Password
+                  </button>
                   <DeleteButton
                     onClick={async () => {
                       const ok = await confirm({

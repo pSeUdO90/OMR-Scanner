@@ -5,7 +5,13 @@ import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../compone
 import { useConfirm } from "../components/ConfirmProvider";
 import PageTitle from "../components/PageTitle";
 
-const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
+const CLASS_CHOICES = ["6", "7", "8", "9", "10", "11", "12"];
+const SECTION_CHOICES = ["A", "B", "C", "D", "E", "F"];
+const SESSION_CHOICES = ["2024-25", "2025-26", "2026-27"];
+
+function mergeChoices(base: string[], extra: string[], current: string) {
+  return Array.from(new Set([...base, ...extra, current].map((item) => item.trim()).filter(Boolean)));
+}
 const labels: Record<string, string> = {
   roll_no: "Roll no",
   name: "Student Name",
@@ -26,8 +32,22 @@ export default function Students() {
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [choices, setChoices] = useState<{ classes: string[]; sections: string[]; batches: string[] }>({
+    classes: [],
+    sections: [],
+    batches: [],
+  });
   const [conflict, setConflict] = useState<{ existing: { roll_no: string; name: string; current_name: string }[]; newCount: number } | null>(null);
-  const load = () => api.get("/api/students").then(setRows);
+  const load = () => {
+    api.get("/api/students").then(setRows);
+    api.get("/api/students/options").then((row) =>
+      setChoices({
+        classes: (row.classes as string[]) || [],
+        sections: (row.sections as string[]) || [],
+        batches: (row.batches as string[]) || [],
+      }),
+    );
+  };
   useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => {
@@ -125,6 +145,27 @@ export default function Students() {
                   <option value="M">Male</option>
                   <option value="F">Female</option>
                   <option value="O">Other</option>
+                </select>
+              ) : key === "class_name" ? (
+                <select value={form.class_name} onChange={(e) => setForm({ ...form, class_name: e.target.value })} required>
+                  <option value="">Select class</option>
+                  {mergeChoices(CLASS_CHOICES, choices.classes, form.class_name).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              ) : key === "section" ? (
+                <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} required>
+                  <option value="">Select section</option>
+                  {mergeChoices(SECTION_CHOICES, choices.sections, form.section).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              ) : key === "session" ? (
+                <select value={form.session} onChange={(e) => setForm({ ...form, session: e.target.value })} required>
+                  <option value="">Select session</option>
+                  {mergeChoices(SESSION_CHOICES, choices.batches, form.session).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
                 </select>
               ) : (
                 <input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required={key === "roll_no" || key === "name"} />

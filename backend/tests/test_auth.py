@@ -86,6 +86,70 @@ def test_logo_upload_under_one_mb_and_public_fetch():
     assert too_big.status_code == 400
 
 
+def test_admin_reset_password_sets_123456():
+    client = TestClient(app)
+    username = "reset_pw_user"
+    created = client.post(
+        "/api/users",
+        json={"username": username, "password": "oldpass", "display_name": "Reset Me", "role": "user"},
+    )
+    if created.status_code == 409:
+        users = client.get("/api/users").json()
+        row = next(item for item in users if item["username"] == username)
+    else:
+        assert created.status_code == 200, created.text
+        row = created.json()
+    reset = client.post(f"/api/users/{row['id']}/reset-password")
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["password"] == "123456"
+    raw = RawClient(app)
+    old = raw.post("/api/auth/login", json={"username": username, "password": "oldpass"})
+    assert old.status_code == 401
+    ok = raw.post("/api/auth/login", json={"username": username, "password": "123456"})
+    assert ok.status_code == 200, ok.text
+
+
+def test_user_can_change_own_password():
+    from uuid import uuid4
+
+    client = TestClient(app)
+    username = f"chg_{uuid4().hex[:10]}"
+    created = client.post(
+        "/api/users",
+        json={"username": username, "password": "pass123", "display_name": "Changer", "role": "user"},
+    )
+    assert created.status_code == 200, created.text
+    raw = RawClient(app)
+    login = raw.post("/api/auth/login", json={"username": username, "password": "pass123"})
+    assert login.status_code == 200, login.text
+    headers = {"Authorization": f"Bearer {login.json()['token']}"}
+    bad = raw.put("/api/auth/password", json={"current_password": "wrong", "new_password": "newpass1"}, headers=headers)
+    assert bad.status_code == 400
+    changed = raw.put(
+        "/api/auth/password",
+        json={"current_password": "pass123", "new_password": "newpass1"},
+        headers=headers,
+    )
+    assert changed.status_code == 200, changed.text
+    again = raw.post("/api/auth/login", json={"username": username, "password": "newpass1"})
+    assert again.status_code == 200, again.text
+
+
+def test_default_processed_dir_and_folder_browse():
+    from app.settings_store import DEFAULT_PROCESSED_DIR
+
+    assert DEFAULT_PROCESSED_DIR == r"E:\OMR Processed Sheets"
+    client = TestClient(app)
+    saved = client.put("/api/settings", json={"processed_images_dir": r"E:\OMR Processed Sheets"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["processed_images_dir"] == r"E:\OMR Processed Sheets"
+    folders = client.get("/api/settings/folders?path=")
+    assert folders.status_code == 200, folders.text
+    assert "dirs" in folders.json()
+    restore = client.put("/api/settings", json={"processed_images_dir": "/tmp/omr-processed-test"})
+    assert restore.status_code == 200
+
+
 def test_edit_student_updates_fields():
     client = TestClient(app)
     created = client.post(

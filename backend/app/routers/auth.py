@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -19,6 +19,7 @@ from ..settings_store import (
     DEFAULT_PROCESSED_DIR,
     MAX_LOGO_BYTES,
     get_settings,
+    list_folders,
     processed_root,
     resolve_logo_path,
 )
@@ -48,6 +49,14 @@ class UserOut(BaseModel):
     permissions: dict[str, list[str]] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
+
+
+RESET_PASSWORD = "123456"
+
+
+class PasswordIn(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class SettingsIn(BaseModel):
@@ -161,6 +170,32 @@ def delete_user(user_id: int, current: AppUser = Depends(require_admin), db: Ses
     return {"ok": True}
 
 
+@router.post("/users/{user_id}/reset-password")
+def reset_user_password(user_id: int, _: AppUser = Depends(require_admin), db: Session = Depends(get_db)):
+    row = db.query(AppUser).filter(AppUser.id == user_id).one_or_none()
+    if not row:
+        raise HTTPException(404, "User not found")
+    row.password_hash = hash_password(RESET_PASSWORD)
+    db.query(UserSession).filter(UserSession.user_id == row.id).delete()
+    db.commit()
+    return {"ok": True, "username": row.username, "password": RESET_PASSWORD}
+
+
+@router.put("/auth/password")
+def change_own_password(payload: PasswordIn, user: AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+    new_password = payload.new_password.strip()
+    if len(new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    row = db.get(AppUser, user.id)
+    if not row:
+        raise HTTPException(404, "User not found")
+    row.password_hash = hash_password(new_password)
+    db.commit()
+    return {"ok": True}
+
+
 def _settings_body(db: Session) -> dict:
     row = get_settings(db)
     root = str(processed_root(db))
@@ -181,6 +216,14 @@ def _settings_body(db: Session) -> dict:
 @router.get("/settings")
 def read_settings(_: AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
     return _settings_body(db)
+
+
+@router.get("/settings/folders")
+def browse_folders(path: str = Query(""), _: AppUser = Depends(require_admin)):
+    try:
+        return list_folders(path)
+    except FileNotFoundError:
+        raise HTTPException(400, f"Folder not found: {path or DEFAULT_PROCESSED_DIR}") from None
 
 
 @router.put("/settings")

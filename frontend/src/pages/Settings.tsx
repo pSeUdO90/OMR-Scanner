@@ -20,6 +20,10 @@ export default function Settings() {
   const logoRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browsePath, setBrowsePath] = useState("");
+  const [browseParent, setBrowseParent] = useState<string | null>(null);
+  const [browseDirs, setBrowseDirs] = useState<string[]>([]);
   const admin = user?.role === "admin";
 
   const load = () => {
@@ -46,6 +50,27 @@ export default function Settings() {
       next[role][tab] = ["view", "edit", "delete"].filter((item) => granted.has(item));
       return next;
     });
+  };
+
+  const openBrowse = async (path = dir || "E:\\OMR Processed Sheets") => {
+    setErr("");
+    try {
+      const listing = await api.get(`/api/settings/folders?path=${encodeURIComponent(path)}`);
+      setBrowsePath(String(listing.path || path));
+      setBrowseParent(listing.parent == null ? null : String(listing.parent));
+      setBrowseDirs((listing.dirs as string[]) || []);
+      setBrowseOpen(true);
+    } catch (error) {
+      try {
+        const listing = await api.get("/api/settings/folders?path=");
+        setBrowsePath(String(listing.path || ""));
+        setBrowseParent(listing.parent == null ? null : String(listing.parent));
+        setBrowseDirs((listing.dirs as string[]) || []);
+        setBrowseOpen(true);
+      } catch {
+        setErr(error instanceof Error ? error.message : "Could not browse folders on this computer");
+      }
+    }
   };
 
   const saveFolder = async (e: FormEvent) => {
@@ -151,13 +176,18 @@ export default function Settings() {
           <input
             value={dir}
             onChange={(e) => setDir(e.target.value)}
-            placeholder="/path/to/processed-omr"
+            placeholder="E:\OMR Processed Sheets"
             disabled={!admin}
           />
         </label>
         <p className="muted">Each Process OMR run writes aligned sheets into a new folder named after the exam, inside this location.</p>
         {resolved && <p className="muted">Current folder: {resolved}</p>}
-        {admin && <button type="submit">Save Folder</button>}
+        {admin && (
+          <div className="row">
+            <button type="button" className="secondary" onClick={() => openBrowse()}>Browse</button>
+            <button type="submit">Save Folder</button>
+          </div>
+        )}
       </form>
       <form className="card" onSubmit={saveRoles}>
         <h3>User Roles</h3>
@@ -202,6 +232,37 @@ export default function Settings() {
       </form>
       {msg && <p>{msg}</p>}
       {err && <p className="error">{err}</p>}
+      {browseOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h3>Choose folder</h3>
+            <p className="muted">{browsePath || "Select a folder"}</p>
+            <div className="row-actions">
+              {browseParent != null && (
+                <button type="button" className="secondary" onClick={() => openBrowse(browseParent)}>Up</button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setDir(browsePath || dir);
+                  setBrowseOpen(false);
+                }}
+              >
+                Use This Folder
+              </button>
+              <button type="button" className="ghost" onClick={() => setBrowseOpen(false)}>Cancel</button>
+            </div>
+            <div className="folder-list">
+              {browseDirs.map((item) => (
+                <button key={item} type="button" className="ghost" onClick={() => openBrowse(item)}>
+                  {item}
+                </button>
+              ))}
+              {browseDirs.length === 0 && <p className="muted">No subfolders in this location.</p>}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

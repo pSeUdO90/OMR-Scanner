@@ -1,8 +1,10 @@
-import { ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { api } from "./api";
 import { AuthUser, useAuth } from "./auth";
 import { brandingLogoUrl, LOGO_UPDATED_EVENT } from "./branding";
 import { NavIcon } from "./components/Icons";
+import { showToast } from "./components/ToastProvider";
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import StudentView from "./pages/StudentView";
@@ -43,6 +45,10 @@ function Guard({ tab, user, children }: { tab: string; user: AuthUser; children:
 export default function App() {
   const { user, ready, logout } = useAuth();
   const [logoSrc, setLogoSrc] = useState(brandingLogoUrl());
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   useEffect(() => {
     const refresh = () => setLogoSrc(brandingLogoUrl());
     window.addEventListener(LOGO_UPDATED_EVENT, refresh);
@@ -66,7 +72,18 @@ export default function App() {
           ))}
         </div>
         <div className="nav-footer">
-          <div className="nav-username">{user.display_name || user.username}</div>
+          <div className="nav-user-row">
+            <div className="nav-username">{user.display_name || user.username}</div>
+            <button
+              type="button"
+              className="nav-profile-btn"
+              title="Profile"
+              aria-label="Open profile"
+              onClick={() => setProfileOpen(true)}
+            >
+              <NavIcon name="settings" />
+            </button>
+          </div>
           <button type="button" className="nav-logout" onClick={() => logout()}>
             <NavIcon name="logout" /> Log Out
           </button>
@@ -91,6 +108,39 @@ export default function App() {
           <Route path="/users" element={<Guard tab="users" user={user}><Users /></Guard>} />
         </Routes>
       </main>
+      {profileOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <form
+            className="modal"
+            onSubmit={async (e: FormEvent) => {
+              e.preventDefault();
+              if (newPassword !== confirmPassword) {
+                showToast("error", "New passwords do not match");
+                return;
+              }
+              await api.put("/api/auth/password", {
+                current_password: currentPassword,
+                new_password: newPassword,
+              });
+              setCurrentPassword("");
+              setNewPassword("");
+              setConfirmPassword("");
+              setProfileOpen(false);
+            }}
+          >
+            <h3>Profile</h3>
+            <p className="muted">{user.display_name || user.username} · {user.role}</p>
+            <label>Current password<input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required /></label>
+            <label>New password<input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={6} required /></label>
+            <label>Confirm new password<input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={6} required /></label>
+            {newPassword && confirmPassword && newPassword !== confirmPassword && <p className="error">New passwords do not match.</p>}
+            <div className="row-actions">
+              <button type="button" className="secondary" onClick={() => setProfileOpen(false)}>Cancel</button>
+              <button type="submit" disabled={Boolean(newPassword) && newPassword !== confirmPassword}>Change Password</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
