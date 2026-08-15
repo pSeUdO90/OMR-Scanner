@@ -40,11 +40,12 @@ export default function Exams() {
       api.get("/api/students"),
       api.get("/api/exams/next-test-id"),
     ]).then(([examRows, layoutRows, subjectRows, studentRows, nextId]: [Exam[], Layout[], Subject[], Student[], { test_id: string }]) => {
+      const usable = layoutRows.filter((item) => item.is_finalized || item.is_builtin);
       setExams(examRows);
-      setLayouts(layoutRows);
+      setLayouts(usable);
       setSubjects(subjectRows);
       setStudents(studentRows);
-      const layout = layoutRows[0];
+      const layout = usable[0];
       setForm((f) => ({ ...f, test_id: nextId.test_id, layout_id: f.layout_id || layout?.id || 0 }));
       if (layout) {
         const byName = Object.fromEntries(subjectRows.map((s) => [s.name, s.id]));

@@ -67,6 +67,9 @@ export type Layout = {
   options: string;
   is_builtin?: boolean;
   is_studio?: boolean;
+  is_finalized?: boolean;
+  in_use?: boolean;
+  sample_rev?: number;
   has_sample?: boolean;
   studio_config?: Record<string, unknown>;
   studio_geometry?: Record<string, unknown>;

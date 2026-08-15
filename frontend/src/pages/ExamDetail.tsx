@@ -46,7 +46,7 @@ export default function ExamDetail() {
       api.get("/api/students"),
     ]);
     setExam(e);
-    setLayouts(layoutRows);
+    setLayouts(layoutRows.filter((item: Layout) => item.is_finalized || item.is_builtin || item.id === e.layout_id));
     setSubjects(subjectRows);
     setStudents(studentRows);
     setForm(examToForm(e));

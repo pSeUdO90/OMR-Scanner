@@ -70,8 +70,17 @@ def test_omr_studio_export_schema_strings():
     assert "Create a new layout" not in layouts
     assert "ViewLink" not in layouts
     assert "Design A4 OMR sheet" not in layouts
+    assert ">Copy<" in layouts.replace(" ", "") or "Copy" in layouts
+    assert "sample_rev" in layouts
     assert "Save as default" in studio
     assert "Loading layout" in studio
+    assert "Save block" not in studio
+    assert "Margin top mm" in studio
+    assert "DeleteButton" in studio
+    assert "patchBlock" in studio
+    css = (ROOT.parent / "index.css").read_text()
+    assert "omr-studio-sidebar" not in css
+    assert "max-height: calc(100vh - 2.5rem)" not in css
     assert "hydrateStudioState" in (ROOT / "studioDefaults.ts").read_text()
     assert "saveStudioDefault" in (ROOT / "studioDefaults.ts").read_text()
     assert "captureSheetThumbnail" in (ROOT / "thumbnail.ts").read_text()

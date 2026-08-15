@@ -15,6 +15,10 @@ export type SheetGeometry = {
   timingHeightMm: number;
   syncTimingToBubbleRows: boolean;
   extraTimingRows: number;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
   contentCol0: number;
   contentCol1: number;
   contentRow0: number;
@@ -36,6 +40,10 @@ export const DEFAULT_GEOMETRY: SheetGeometry = {
   timingHeightMm: 2.5,
   syncTimingToBubbleRows: true,
   extraTimingRows: 0,
+  marginTopMm: 8,
+  marginRightMm: 8,
+  marginBottomMm: 8,
+  marginLeftMm: 8,
   contentCol0: 3,
   contentCol1: 28,
   contentRow0: 3,
@@ -75,9 +83,17 @@ export const CONTENT_ROW1 = DEFAULT_GEOMETRY.contentRow1;
 export type PointMm = { xMm: number; yMm: number };
 
 export function gridOrigin(g: SheetGeometry) {
+  const left = g.marginLeftMm ?? 0;
+  const top = g.marginTopMm ?? 0;
+  const right = g.marginRightMm ?? 0;
+  const bottom = g.marginBottomMm ?? 0;
+  const innerW = Math.max(0, g.pageWidthMm - left - right);
+  const innerH = Math.max(0, g.pageHeightMm - top - bottom);
+  const usedW = g.gridCols * g.cellMm;
+  const usedH = g.gridRows * g.cellMm;
   return {
-    xMm: (g.pageWidthMm - g.gridCols * g.cellMm) / 2,
-    yMm: (g.pageHeightMm - g.gridRows * g.cellMm) / 2,
+    xMm: left + Math.max(0, (innerW - usedW) / 2),
+    yMm: top + Math.max(0, (innerH - usedH) / 2),
   };
 }
 

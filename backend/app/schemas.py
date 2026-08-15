@@ -67,6 +67,9 @@ class LayoutOut(BaseModel):
     analysis: list[dict] = Field(default_factory=list)
     preview: dict | None = None
     is_studio: bool = False
+    is_finalized: bool = False
+    in_use: bool = False
+    sample_rev: int = 0
     studio_config: dict = Field(default_factory=dict)
     studio_geometry: dict = Field(default_factory=dict)
     studio_blocks: list[dict] = Field(default_factory=list)

@@ -216,7 +216,7 @@ export default function ExamForm({
             </button>
           ))}
         </div>
-        {layouts.length === 0 && <p className="muted">Create an OMR layout first, then return here to assign it to the exam.</p>}
+        {layouts.length === 0 && <p className="muted">Finalize an OMR sheet in A4 OMR Studio, then return here to assign it.</p>}
         {selectedLayout && <p className="muted">{selectedLayout.description}</p>}
         <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} locked={locked} />
       </div>

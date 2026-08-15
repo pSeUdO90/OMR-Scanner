@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+import shutil
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
@@ -9,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
@@ -28,6 +29,18 @@ from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import LayoutDesignIn, LayoutOut, StudioLayoutIn
 
 router = APIRouter(prefix="/api/layouts", tags=["layouts"])
+LAYOUT_IN_USE = "Layout Associated with Exam. Cannot be Modified"
+
+
+def _layout_in_use(db: Session, layout_id: int) -> bool:
+    return db.query(Exam).filter(Exam.layout_id == layout_id).first() is not None
+
+
+def _sample_rev(path: str) -> int:
+    try:
+        return int(Path(path).stat().st_mtime_ns)
+    except OSError:
+        return 0
 
 
 def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> LayoutOut:
@@ -36,6 +49,10 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
     item.preview = layout_preview(config)
     item.has_sample = bool(getattr(row, "sample_path", ""))
     item.is_studio = bool(config.get("studio"))
+    item.is_finalized = bool(getattr(row, "is_finalized", True) or row.is_builtin)
+    session = object_session(row)
+    item.in_use = bool(session and _layout_in_use(session, row.id))
+    item.sample_rev = _sample_rev(getattr(row, "sample_path", "") or "")
     item.studio_config = config.get("studio_config") or {}
     item.studio_geometry = config.get("studio_geometry") or {}
     item.studio_blocks = config.get("studio_blocks") or []
@@ -165,6 +182,7 @@ def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
         options=config["options"],
         config_json=json.dumps(config),
         is_builtin=False,
+        is_finalized=True,
         sample_path=sample_path,
         field_map_json=json.dumps({"date": "exam_date", "test_id": "test_id", "test_no": "test_no"}),
     )
@@ -181,12 +199,14 @@ def update_studio_layout(layout_id: int, payload: StudioLayoutIn, db: Session = 
         raise HTTPException(404, "Layout not found")
     if row.is_builtin:
         raise HTTPException(400, "Built-in layouts cannot be edited")
+    if _layout_in_use(db, layout_id):
+        raise HTTPException(409, LAYOUT_IN_USE)
     name = _assert_unique_name(db, payload.name, exclude_id=row.id)
     payload.name = name
     config = _studio_config(payload, row.slug)
-    thumb = _write_thumbnail(row.slug, payload.thumbnail_base64)
-    if thumb:
-        row.sample_path = thumb
+    thumb = _write_thumbnail(row.slug, payload.thumbnail_base64) or _write_designed_sample(row.slug, config)
+    row.sample_path = thumb
+    row.is_finalized = True
     row.name = payload.name
     row.description = payload.description or config["description"]
     row.total_questions = config["total_questions"]
@@ -195,6 +215,53 @@ def update_studio_layout(layout_id: int, payload: StudioLayoutIn, db: Session = 
     db.commit()
     db.refresh(row)
     return _layout_out(row)
+
+
+def _copy_name(db: Session, name: str) -> str:
+    base = f"{name} copy"
+    if not db.query(OmrLayout).filter(func.lower(OmrLayout.name) == base.lower()).first():
+        return base
+    n = 2
+    while True:
+        candidate = f"{name} copy {n}"
+        if not db.query(OmrLayout).filter(func.lower(OmrLayout.name) == candidate.lower()).first():
+            return candidate
+        n += 1
+
+
+@router.post("/{layout_id}/copy", response_model=LayoutOut)
+def copy_layout(layout_id: int, db: Session = Depends(get_db)):
+    row = db.get(OmrLayout, layout_id)
+    if not row:
+        raise HTTPException(404, "Layout not found")
+    name = _copy_name(db, row.name)
+    slug = _unique_slug(db, name)
+    config = json.loads(row.config_json)
+    config["slug"] = slug
+    config["name"] = name
+    sample_path = ""
+    if row.sample_path and Path(row.sample_path).exists():
+        dest_dir = UPLOAD_DIR / "layouts"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / f"{slug}-copy-{uuid4().hex[:8]}{Path(row.sample_path).suffix or '.jpg'}"
+        shutil.copy2(row.sample_path, dest)
+        sample_path = str(dest)
+    clone = OmrLayout(
+        slug=slug,
+        name=name,
+        description=row.description,
+        total_questions=row.total_questions,
+        options=row.options,
+        config_json=json.dumps(config),
+        is_builtin=False,
+        is_finalized=bool(getattr(row, "is_finalized", True)),
+        sample_path=sample_path,
+        field_map_json=row.field_map_json or "{}",
+    )
+    db.add(clone)
+    db.commit()
+    db.refresh(clone)
+    return _layout_out(clone)
 
 
 @router.post("/design", response_model=LayoutOut)
@@ -344,6 +411,8 @@ async def update_layout(
     row = db.get(OmrLayout, layout_id)
     if not row:
         raise HTTPException(404, "Layout not found")
+    if _layout_in_use(db, layout_id):
+        raise HTTPException(409, LAYOUT_IN_USE)
     name = _assert_unique_name(db, name, exclude_id=row.id)
     row.name = name
     row.description = description or row.description
@@ -392,6 +461,8 @@ def save_layout_blocks(layout_id: int, payload: dict, db: Session = Depends(get_
     row = db.get(OmrLayout, layout_id)
     if not row:
         raise HTTPException(404, "Layout not found")
+    if _layout_in_use(db, layout_id):
+        raise HTTPException(409, LAYOUT_IN_USE)
     config = json.loads(row.config_json)
     blocks = payload.get("blocks")
     if not isinstance(blocks, list):
@@ -443,7 +514,7 @@ def layout_sample(layout_id: int, db: Session = Depends(get_db)):
     row = db.get(OmrLayout, layout_id)
     if not row or not getattr(row, "sample_path", "") or not Path(row.sample_path).exists():
         raise HTTPException(404, "No sample OMR uploaded for this layout")
-    return FileResponse(row.sample_path)
+    return FileResponse(row.sample_path, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 def _blank_sheet_image(row: OmrLayout):

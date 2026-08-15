@@ -22,6 +22,8 @@ def _ensure_columns() -> None:
             conn.execute(text("ALTER TABLE omr_layouts ADD COLUMN sample_path VARCHAR(500) DEFAULT ''"))
         if layout_cols and "field_map_json" not in layout_cols:
             conn.execute(text("ALTER TABLE omr_layouts ADD COLUMN field_map_json TEXT DEFAULT '{}'"))
+        if layout_cols and "is_finalized" not in layout_cols:
+            conn.execute(text("ALTER TABLE omr_layouts ADD COLUMN is_finalized BOOLEAN DEFAULT 1"))
         if cols and "test_id" not in cols:
             conn.execute(text("ALTER TABLE exams ADD COLUMN test_id VARCHAR(40) DEFAULT ''"))
         if cols and "test_no" not in cols:

@@ -53,6 +53,7 @@ class OmrLayout(Base):
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=True)
     sample_path: Mapped[str] = mapped_column(String(500), default="")
     field_map_json: Mapped[str] = mapped_column(Text, default="{}")
+    is_finalized: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Exam(Base):

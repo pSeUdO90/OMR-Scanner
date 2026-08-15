@@ -45,6 +45,7 @@ def seed_reference_data(db: Session) -> None:
                 options=layout["options"],
                 config_json=json.dumps(layout),
                 is_builtin=True,
+                is_finalized=True,
             )
         )
     db.commit()

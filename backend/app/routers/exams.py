@@ -126,6 +126,8 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
     layout = db.get(OmrLayout, payload.layout_id)
     if not layout:
         raise HTTPException(400, "Layout not found")
+    if not (layout.is_builtin or getattr(layout, "is_finalized", False)):
+        raise HTTPException(400, "Only finalized OMR layouts can be used in an exam")
     exam = Exam(
         name=payload.name,
         exam_date=payload.exam_date,

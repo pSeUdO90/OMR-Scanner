@@ -94,7 +94,7 @@ export default function Layouts() {
               </label>
               {layout.has_sample ? (
                 <Link to={`/layouts/${layout.id}`}>
-                  <img className="layout-thumb-lg" src={`/api/layouts/${layout.id}/sample`} alt="" />
+                  <img className="layout-thumb-lg" src={`/api/layouts/${layout.id}/sample?v=${layout.sample_rev || 0}`} alt="" />
                 </Link>
               ) : (
                 <div className="layout-thumb-lg muted">No preview</div>
@@ -105,13 +105,32 @@ export default function Layouts() {
               <p className="muted">
                 {layout.total_questions} questions · {layout.options}
                 {layout.is_studio ? " · OMR Studio" : layout.is_builtin ? " · built-in" : " · custom"}
+                {layout.in_use ? " · used in exam" : layout.is_finalized ? " · finalized" : ""}
               </p>
               <div className="actions">
-                {layout.is_studio ? (
+                {layout.is_studio && !layout.in_use ? (
                   <EditLink to={`/layouts/studio/${layout.id}`}>Edit Layout</EditLink>
+                ) : layout.is_studio && layout.in_use ? (
+                  <span className="muted">Locked</span>
                 ) : (
                   <EditLink to={`/layouts/${layout.id}?tab=map`}>Map blocks</EditLink>
                 )}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={async () => {
+                    setErr("");
+                    try {
+                      const copied = await api.post(`/api/layouts/${layout.id}/copy`) as Layout;
+                      setMsg(`Copied as “${copied.name}”.`);
+                      load();
+                    } catch (error) {
+                      setErr(error instanceof Error ? error.message : "Could not copy layout");
+                    }
+                  }}
+                >
+                  Copy
+                </button>
                 <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
               </div>
             </article>

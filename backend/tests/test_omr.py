@@ -437,14 +437,52 @@ def test_studio_layout_saves_mapping_json():
     assert config["studio_mapping"]["documentMetadata"]["pageSize"]["widthMm"] == 210
     assert config["studio_blocks"][0]["blockId"] == "mcq_column_1"
     assert config["studio_config"]["questionColumns"] == 5
+    stored = SessionLocal().query(OmrLayout).filter(OmrLayout.id == row["id"]).one()
+    first_path = stored.sample_path
     updated = client.put(
         f"/api/layouts/{row['id']}/studio",
         json={**payload, "name": "Studio Save Test Edited", "thumbnail_base64": thumb},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["name"] == "Studio Save Test Edited"
+    stored = SessionLocal().query(OmrLayout).filter(OmrLayout.id == row["id"]).one()
+    assert stored.sample_path != first_path
+    assert created.json()["is_finalized"] is True
     duplicate = client.post("/api/layouts/studio", json={**payload, "name": "Studio Save Test Edited"})
     assert duplicate.status_code == 409
     assert duplicate.json()["detail"] == "Layout name already exists"
+    copied = client.post(f"/api/layouts/{row['id']}/copy")
+    assert copied.status_code == 200, copied.text
+    assert copied.json()["name"] == "Studio Save Test Edited copy"
+    assert copied.json()["is_studio"] is True
+    exam = client.post(
+        "/api/exams",
+        json={
+            "name": "Studio lock exam",
+            "exam_date": "2026-08-15",
+            "exam_type": "Unit Test",
+            "layout_id": row["id"],
+        },
+    )
+    assert exam.status_code == 200, exam.text
+    locked = client.get(f"/api/layouts/{row['id']}").json()
+    assert locked["in_use"] is True
+    blocked = client.put(
+        f"/api/layouts/{row['id']}/studio",
+        json={**payload, "name": "Should not change", "thumbnail_base64": thumb},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == "Layout Associated with Exam. Cannot be Modified"
+    still = client.get(f"/api/layouts/{row['id']}").json()
+    assert still["name"] == "Studio Save Test Edited"
+    clone_id = copied.json()["id"]
+    clone_edit = client.put(
+        f"/api/layouts/{clone_id}/studio",
+        json={**payload, "name": "Studio Save Test Edited copy", "thumbnail_base64": thumb},
+    )
+    assert clone_edit.status_code == 200, clone_edit.text
+    assert client.delete(f"/api/layouts/{row['id']}").status_code == 409
+    assert client.delete(f"/api/exams/{exam.json()['id']}").status_code == 200
     assert client.delete(f"/api/layouts/{row['id']}").status_code == 200
+    assert client.delete(f"/api/layouts/{clone_id}").status_code == 200
 
