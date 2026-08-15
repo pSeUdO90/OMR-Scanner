@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, object_session
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, OmrLayout
 from ..omr.analyze import analyze_layout_config, analysis_from_blocks
+from ..omr.a4_pdf import sheet_bgr_to_a4_pdf
 from ..omr.generator import generate_designed_sheet
 from ..omr.studio_render import generate_studio_sheet
 from ..omr.layouts import (
@@ -542,11 +543,9 @@ def layout_blank_sheet_pdf(layout_id: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(404, "Layout not found")
     image = _blank_sheet_image(row)
-    rgb = image[:, :, ::-1]
-    buf = BytesIO()
-    Image.fromarray(rgb).save(buf, format="PDF", resolution=200)
+    pdf = sheet_bgr_to_a4_pdf(image)
     return StreamingResponse(
-        iter([buf.getvalue()]),
+        iter([pdf]),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{row.slug}-a4-omr.pdf"'},
     )

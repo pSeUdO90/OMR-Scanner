@@ -435,6 +435,12 @@ def test_studio_layout_saves_mapping_json():
     assert pdf.status_code == 200, pdf.text
     assert pdf.content[:4] == b"%PDF"
     assert "inline" in pdf.headers.get("content-disposition", "").lower()
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument(pdf.content)
+    assert len(doc) == 1
+    width, height = doc[0].get_size()
+    assert abs(width - 595.27) < 2
+    assert abs(height - 841.89) < 2
     stored = SessionLocal().query(OmrLayout).filter(OmrLayout.id == row["id"]).one()
     config = json.loads(stored.config_json)
     assert config["studio"] is True
