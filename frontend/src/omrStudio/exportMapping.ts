@@ -165,8 +165,13 @@ export function mappingFromDom(
       yPct: ((tl.top - page.top) / height) * 100,
     };
   }
+  const groups = new Map<string, Element>();
+  pageEl.querySelectorAll("[data-block-id]").forEach((node) => {
+    const id = node.getAttribute("data-block-id");
+    if (id) groups.set(id, node);
+  });
   base.dataBlocks = base.dataBlocks.map((block) => {
-    const group = pageEl.querySelector(`[data-block-id="${CSS.escape(block.blockId)}"]`);
+    const group = groups.get(block.blockId);
     const box = group?.getBoundingClientRect();
     if (box) {
       block.boundsRelative = {
@@ -176,11 +181,13 @@ export function mappingFromDom(
         heightPct: (box.height / height) * 100,
       };
     }
+    const byId = new Map<string, DOMRect>();
+    group?.querySelectorAll("[data-target-id]").forEach((node) => {
+      const id = node.getAttribute("data-target-id");
+      if (id) byId.set(id, node.getBoundingClientRect());
+    });
     block.targets = block.targets.map((target) => {
-      const el = pageEl.querySelector(
-        `[data-block-id="${CSS.escape(block.blockId)}"] [data-target-id="${target.targetId}"]`,
-      );
-      const rect = el?.getBoundingClientRect();
+      const rect = byId.get(String(target.targetId));
       if (rect) target.centerRelative = toPct(rect);
       return target;
     });

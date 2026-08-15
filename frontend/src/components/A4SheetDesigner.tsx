@@ -78,10 +78,12 @@ export default function A4SheetDesigner({
     return Math.max(...answerBlocks.map((b) => b.end_q || 0)) + 1;
   }, [blocks]);
 
+  const surfaceRect = useRef<DOMRect | null>(null);
   const point = (event: PointerEvent) => {
     const el = surface.current;
     if (!el) return { x: 0, y: 0 };
-    const rect = el.getBoundingClientRect();
+    const rect = surfaceRect.current || el.getBoundingClientRect();
+    surfaceRect.current = rect;
     return {
       x: clamp((event.clientX - rect.left) / rect.width),
       y: clamp((event.clientY - rect.top) / rect.height),
@@ -174,6 +176,7 @@ export default function A4SheetDesigner({
       }
     }
     drag.current = null;
+    surfaceRect.current = null;
     setDraft(null);
   };
 

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Layout } from "../api";
 import { DeleteButton } from "../components/ActionButtons";
 import { useConfirm } from "../components/ConfirmProvider";
 import OmrCanvas from "../omrStudio/OmrCanvas";
-import { mappingFromDom, mappingFromGeometry } from "../omrStudio/exportMapping";
+import { mappingFromGeometry } from "../omrStudio/exportMapping";
 import { cloneGeometry, type SheetGeometry } from "../omrStudio/geometry";
 import {
   StudioBlock,
@@ -57,6 +57,8 @@ export default function OmrStudio() {
   const [err, setErr] = useState("");
   const [qaOpen, setQaOpen] = useState(false);
   const [inUse, setInUse] = useState(false);
+  const inUseRef = useRef(false);
+  inUseRef.current = inUse;
 
   useEffect(() => {
     document.documentElement.classList.add("omr-studio-active");
@@ -127,24 +129,27 @@ export default function OmrStudio() {
   };
 
   const mapping = useMemo(() => mappingFromGeometry(blocks, geometry), [blocks, geometry]);
+  const jsonTimer = useRef(0);
 
-  const currentMapping = () => {
-    const page = pageRef.current?.querySelector("[data-omr-page='a4']");
-    return page ? mappingFromDom(page, blocks, geometry) : mapping;
-  };
+  const currentMapping = () => mapping;
 
   const exportJson = () => {
-    const text = JSON.stringify(currentMapping(), null, 2);
-    setJsonText(text);
-    const blob = new Blob([text], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${config.title.replace(/\s+/g, "-").toLowerCase() || "omr-layout"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setMsg("JSON File Downloaded.");
+    window.clearTimeout(jsonTimer.current);
+    jsonTimer.current = window.setTimeout(() => {
+      const text = JSON.stringify(currentMapping(), null, 2);
+      setJsonText(text);
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${config.title.replace(/\s+/g, "-").toLowerCase() || "omr-layout"}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg("JSON File Downloaded.");
+    }, 150);
   };
+
+  useEffect(() => () => window.clearTimeout(jsonTimer.current), []);
 
   const saveLayout = async () => {
     if (inUse) return;
@@ -199,6 +204,15 @@ export default function OmrStudio() {
       }),
     );
   };
+
+  const onMoveBlock = useCallback((id: string, col0: number, row0: number) => {
+    setBlocks((current) => {
+      if (inUseRef.current) return current;
+      return current.map((block) =>
+        block.id === id && (block.col0 !== col0 || block.row0 !== row0) ? { ...block, col0, row0 } : block,
+      );
+    });
+  }, []);
 
   const deleteBlock = async (block: StudioBlock) => {
     if (inUse) return;
@@ -398,10 +412,7 @@ export default function OmrStudio() {
             showGrid={showGrid}
             geometry={geometry}
             onSelect={setSelectedId}
-            onMove={(id, col0, row0) => {
-              if (inUse) return;
-              patchBlock(id, { col0, row0 });
-            }}
+            onMove={onMoveBlock}
           />
         </div>
       </div>

@@ -1,9 +1,10 @@
-import { PointerEvent, useRef } from "react";
+import { memo, PointerEvent, useEffect, useMemo, useRef } from "react";
 import {
   BUBBLE_STROKE_PT,
   cellCenter,
   cellOrigin,
   fiducialRect,
+  gridOrigin,
   mmToCell,
   timingMark,
   timingRows,
@@ -23,7 +24,11 @@ function clientToMm(svg: SVGSVGElement, clientX: number, clientY: number) {
   return { xMm: p.x, yMm: p.y };
 }
 
-export default function OmrCanvas({
+function rectPath(x: number, y: number, w: number, h: number) {
+  return `M${x} ${y}h${w}v${h}h${-w}z`;
+}
+
+function OmrCanvas({
   title,
   blocks,
   selectedId,
@@ -43,18 +48,49 @@ export default function OmrCanvas({
   const g = geometry;
   const stroke = BUBBLE_STROKE_PT * PT_TO_MM;
   const radius = g.bubbleDiameterMm / 2;
-  const rows = timingRows(g, bubbleRowsForBlocks(blocks));
+  const origin = useMemo(() => gridOrigin(g), [g]);
+  const rows = useMemo(() => timingRows(g, bubbleRowsForBlocks(blocks)), [g, blocks]);
+  const timingPath = useMemo(
+    () =>
+      rows
+        .flatMap((row) => {
+          const left = timingMark("left", row, g);
+          const right = timingMark("right", row, g);
+          return [rectPath(left.xMm, left.yMm, left.widthMm, left.heightMm), rectPath(right.xMm, right.yMm, right.widthMm, right.heightMm)];
+        })
+        .join(""),
+    [rows, g],
+  );
   const drag = useRef<{
     id: string;
     pointerId: number;
     offsetCol: number;
     offsetRow: number;
-    moved: boolean;
+    cols: number;
+    rows: number;
   } | null>(null);
+  const moveFrame = useRef(0);
+  const pendingMove = useRef<{ id: string; col0: number; row0: number } | null>(null);
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
 
-  const onPointerDown = (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
-    const svg = event.currentTarget.ownerSVGElement;
-    if (!svg) return;
+  useEffect(() => () => {
+    if (moveFrame.current) cancelAnimationFrame(moveFrame.current);
+  }, []);
+
+  const flushMove = () => {
+    moveFrame.current = 0;
+    const next = pendingMove.current;
+    if (next) onMove(next.id, next.col0, next.row0);
+  };
+
+  const onPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    const hit = (event.target as Element | null)?.closest?.("[data-studio-id]");
+    const id = hit?.getAttribute("data-studio-id");
+    if (!id) return;
+    const block = blocksRef.current.find((item) => item.id === id);
+    const svg = event.currentTarget;
+    if (!block) return;
     event.stopPropagation();
     event.preventDefault();
     const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
@@ -64,28 +100,35 @@ export default function OmrCanvas({
       pointerId: event.pointerId,
       offsetCol: cell.col - block.col0,
       offsetRow: cell.row - block.row0,
-      moved: false,
+      cols: block.cols,
+      rows: block.rows,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    svg.setPointerCapture(event.pointerId);
     onSelect(block.id);
   };
 
-  const onPointerMove = (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
+  const onPointerMove = (event: PointerEvent<SVGSVGElement>) => {
     const session = drag.current;
-    if (!session || session.id !== block.id || session.pointerId !== event.pointerId) return;
-    const svg = event.currentTarget.ownerSVGElement;
-    if (!svg) return;
-    const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
+    if (!session || session.pointerId !== event.pointerId) return;
+    const { xMm, yMm } = clientToMm(event.currentTarget, event.clientX, event.clientY);
     const cell = mmToCell(xMm, yMm, g);
-    const next = clampBlockOrigin(cell.col - session.offsetCol, cell.row - session.offsetRow, block.cols, block.rows, g);
-    if (next.col0 === block.col0 && next.row0 === block.row0) return;
-    session.moved = true;
-    onMove(block.id, next.col0, next.row0);
+    const next = clampBlockOrigin(cell.col - session.offsetCol, cell.row - session.offsetRow, session.cols, session.rows, g);
+    pendingMove.current = { id: session.id, col0: next.col0, row0: next.row0 };
+    if (!moveFrame.current) moveFrame.current = requestAnimationFrame(flushMove);
   };
 
-  const endDrag = (event: PointerEvent<SVGGElement>) => {
-    if (drag.current?.pointerId === event.pointerId) drag.current = null;
+  const endDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (drag.current?.pointerId === event.pointerId) {
+      if (moveFrame.current) {
+        cancelAnimationFrame(moveFrame.current);
+        flushMove();
+      }
+      drag.current = null;
+    }
   };
+
+  const gridW = g.gridCols * g.cellMm;
+  const gridH = g.gridRows * g.cellMm;
 
   return (
     <svg
@@ -95,7 +138,26 @@ export default function OmrCanvas({
       height={`${g.pageHeightMm}mm`}
       xmlns="http://www.w3.org/2000/svg"
       data-omr-page="a4"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
     >
+      <defs>
+        <circle id="omr-bubble-sym" r={radius} fill="none" stroke="#000000" strokeWidth={stroke} />
+        {showGrid && (
+          <pattern
+            id="omr-grid-pattern"
+            width={g.cellMm}
+            height={g.cellMm}
+            patternUnits="userSpaceOnUse"
+            x={origin.xMm}
+            y={origin.yMm}
+          >
+            <path d={`M ${g.cellMm} 0 H 0 V ${g.cellMm}`} fill="none" stroke="#10BBC3" strokeWidth="0.12" />
+          </pattern>
+        )}
+      </defs>
       <rect x="0" y="0" width={g.pageWidthMm} height={g.pageHeightMm} fill="#ffffff" />
       {(["TL", "TR", "BL", "BR"] as const).map((id) => {
         const box = fiducialRect(id, g);
@@ -111,57 +173,30 @@ export default function OmrCanvas({
           />
         );
       })}
-      {rows.map((row) =>
-        (["left", "right"] as const).map((side) => {
-          const mark = timingMark(side, row, g);
-          return (
-            <rect
-              key={`${side}-${row}`}
-              className="omr-timing"
-              x={mark.xMm}
-              y={mark.yMm}
-              width={mark.widthMm}
-              height={mark.heightMm}
-              fill="#000000"
-            />
-          );
-        })
+      <path className="omr-timing" d={timingPath} fill="#000000" />
+      {showGrid && (
+        <rect
+          className="omr-grid-cell"
+          x={origin.xMm}
+          y={origin.yMm}
+          width={gridW}
+          height={gridH}
+          fill="url(#omr-grid-pattern)"
+          pointerEvents="none"
+        />
       )}
-      {showGrid &&
-        Array.from({ length: g.gridCols * g.gridRows }, (_, i) => {
-          const col = i % g.gridCols;
-          const row = Math.floor(i / g.gridCols);
-          const origin = cellOrigin(col, row, g);
-          return (
-            <rect
-              key={`g-${col}-${row}`}
-              className="omr-grid-cell"
-              x={origin.xMm}
-              y={origin.yMm}
-              width={g.cellMm}
-              height={g.cellMm}
-              fill="none"
-              stroke="#10BBC3"
-              strokeWidth="0.12"
-            />
-          );
-        })}
-      <text x={g.pageWidthMm / 2} y="18" textAnchor="middle" fontSize="4.2" fontFamily="Roboto, Arial, sans-serif" fill="#000">
+      <text x={g.pageWidthMm / 2} y="18" textAnchor="middle" fontSize="4.2" fontFamily="system-ui, Roboto, Arial, sans-serif" fill="#000">
         {title}
       </text>
-      <text x={g.pageWidthMm / 2} y="23" textAnchor="middle" fontSize="2.4" fontFamily="Roboto, Arial, sans-serif" fill="#000">
+      <text x={g.pageWidthMm / 2} y="23" textAnchor="middle" fontSize="2.4" fontFamily="system-ui, Roboto, Arial, sans-serif" fill="#000">
         {g.pageWidthMm}×{g.pageHeightMm} mm · {g.cellMm} mm grid · {g.bubbleDiameterMm} mm bubbles
       </text>
       {blocks.map((block) => (
         <g
           key={block.id}
           data-block-id={block.blockId}
+          data-studio-id={block.id}
           className={selectedId === block.id ? "omr-block selected" : "omr-block"}
-          onPointerDown={(event) => onPointerDown(event, block)}
-          onPointerMove={(event) => onPointerMove(event, block)}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onClick={(event) => event.stopPropagation()}
         >
           <rect
             x={cellOrigin(block.col0, block.row0, g).xMm}
@@ -177,17 +212,17 @@ export default function OmrCanvas({
             x={cellOrigin(block.col0, block.row0, g).xMm}
             y={cellOrigin(block.col0, block.row0, g).yMm - 3.2}
             fontSize="2.2"
-            fontFamily="Roboto, Arial, sans-serif"
+            fontFamily="system-ui, Roboto, Arial, sans-serif"
             fill="#000"
           >
             {block.label}
           </text>
           {block.blockType === "GRID_MCQ" ? (
-            <McqBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+            <McqBubbles block={block} geometry={g} />
           ) : block.blockType === "GRID_NAME" ? (
-            <NameBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+            <NameBubbles block={block} geometry={g} />
           ) : (
-            <DigitBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+            <DigitBubbles block={block} geometry={g} />
           )}
         </g>
       ))}
@@ -195,25 +230,16 @@ export default function OmrCanvas({
   );
 }
 
-function DigitBubbles({
-  block,
-  stroke,
-  radius,
-  geometry: g,
-}: {
-  block: StudioBlock;
-  stroke: number;
-  radius: number;
-  geometry: SheetGeometry;
-}) {
+function DigitBubbles({ block, geometry: g }: { block: StudioBlock; geometry: SheetGeometry }) {
   const dateHeaders = ["D", "D", "M", "M", "Y", "Y", "Y", "Y"];
+  const originY = cellOrigin(block.col0, block.row0, g).yMm;
   const nodes = [];
   let targetId = 1;
   for (let col = 0; col < block.cols; col++) {
     const header = cellCenter(block.col0 + col, block.row0, g);
     const caption = block.blockType === "GRID_DATE" && col < dateHeaders.length ? dateHeaders[col] : String(col + 1);
     nodes.push(
-      <text key={`h-${col}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
+      <text key={`h-${col}`} x={header.xMm} y={originY - 1} textAnchor="middle" fontSize="1.8" fill="#000">
         {caption}
       </text>
     );
@@ -227,7 +253,7 @@ function DigitBubbles({
               {row % 10}
             </text>
           )}
-          <circle cx={center.xMm} cy={center.yMm} r={radius} fill="none" stroke="#000000" strokeWidth={stroke} />
+          <use href="#omr-bubble-sym" x={center.xMm} y={center.yMm} />
         </g>
       );
     }
@@ -235,24 +261,15 @@ function DigitBubbles({
   return <>{nodes}</>;
 }
 
-function NameBubbles({
-  block,
-  stroke,
-  radius,
-  geometry: g,
-}: {
-  block: StudioBlock;
-  stroke: number;
-  radius: number;
-  geometry: SheetGeometry;
-}) {
+function NameBubbles({ block, geometry: g }: { block: StudioBlock; geometry: SheetGeometry }) {
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const originY = cellOrigin(block.col0, block.row0, g).yMm;
   const nodes = [];
   let targetId = 1;
   for (let col = 0; col < block.cols; col++) {
     const header = cellCenter(block.col0 + col, block.row0, g);
     nodes.push(
-      <text key={`nh-${col}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
+      <text key={`nh-${col}`} x={header.xMm} y={originY - 1} textAnchor="middle" fontSize="1.8" fill="#000">
         {col + 1}
       </text>
     );
@@ -267,7 +284,7 @@ function NameBubbles({
               {letter}
             </text>
           )}
-          <circle cx={center.xMm} cy={center.yMm} r={radius} fill="none" stroke="#000000" strokeWidth={stroke} />
+          <use href="#omr-bubble-sym" x={center.xMm} y={center.yMm} />
         </g>
       );
     }
@@ -275,28 +292,19 @@ function NameBubbles({
   return <>{nodes}</>;
 }
 
-function McqBubbles({
-  block,
-  stroke,
-  radius,
-  geometry: g,
-}: {
-  block: StudioBlock;
-  stroke: number;
-  radius: number;
-  geometry: SheetGeometry;
-}) {
+function McqBubbles({ block, geometry: g }: { block: StudioBlock; geometry: SheetGeometry }) {
   const options = block.options || "ABCD";
   const startQ = block.startQ || 1;
   const endQ = block.endQ || startQ + block.rows - 1;
   const questionCount = Math.max(1, endQ - startQ + 1);
   const rowCount = Math.min(block.rows, questionCount);
+  const originY = cellOrigin(block.col0, block.row0, g).yMm;
   const nodes = [];
   let targetId = 1;
   for (let c = 0; c < options.length; c++) {
     const header = cellCenter(block.col0 + 1 + c, block.row0, g);
     nodes.push(
-      <text key={`oh-${c}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
+      <text key={`oh-${c}`} x={header.xMm} y={originY - 1} textAnchor="middle" fontSize="1.8" fill="#000">
         {options[c]}
       </text>
     );
@@ -312,18 +320,17 @@ function McqBubbles({
       const center = cellCenter(block.col0 + 1 + c, block.row0 + r, g);
       const id = targetId++;
       nodes.push(
-        <circle
+        <use
           key={`b-${r}-${c}`}
+          href="#omr-bubble-sym"
+          x={center.xMm}
+          y={center.yMm}
           data-target-id={id}
-          cx={center.xMm}
-          cy={center.yMm}
-          r={radius}
-          fill="none"
-          stroke="#000000"
-          strokeWidth={stroke}
         />
       );
     }
   }
   return <>{nodes}</>;
 }
+
+export default memo(OmrCanvas);
