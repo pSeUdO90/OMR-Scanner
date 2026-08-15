@@ -1,5 +1,5 @@
 import { PointerEvent, useMemo, useRef, useState } from "react";
-import { api, DataBlock, Layout } from "../api";
+import { api, authFileUrl, DataBlock, Layout } from "../api";
 import { BLOCK_KINDS, FIELD_TARGETS } from "../blockKinds";
 
 type KindInfo = (typeof BLOCK_KINDS)[number];
@@ -224,7 +224,7 @@ export default function BlockEditor({
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          <img src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} draggable={false} />
+          <img src={authFileUrl(`/api/layouts/${layout.id}/sample`)} alt={`${layout.name} sample`} draggable={false} />
           {blocks.map((block) => (
             <div
               key={block.id}

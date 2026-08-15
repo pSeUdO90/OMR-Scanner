@@ -431,6 +431,15 @@ def test_studio_layout_saves_mapping_json():
     assert any(item["id"] == row["id"] and item["is_studio"] and item["has_sample"] for item in listed)
     sample = client.get(f"/api/layouts/{row['id']}/sample")
     assert sample.status_code == 200
+    from fastapi.testclient import TestClient as RawClient
+    raw = RawClient(app)
+    denied = raw.get(f"/api/layouts/{row['id']}/sample")
+    assert denied.status_code == 401
+    login = raw.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    token = login.json()["token"]
+    by_query = raw.get(f"/api/layouts/{row['id']}/sample?token={token}")
+    assert by_query.status_code == 200
+    assert by_query.content[:2] == b"\xff\xd8"
     pdf = client.get(f"/api/layouts/{row['id']}/blank-sheet.pdf")
     assert pdf.status_code == 200, pdf.text
     assert pdf.content[:4] == b"%PDF"

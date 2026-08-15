@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, Layout } from "../api";
+import { api, authFileUrl, Layout } from "../api";
 import { DeleteButton, EditLink } from "../components/ActionButtons";
 import { BulkBar } from "../components/BulkSelect";
 import { useConfirm } from "../components/ConfirmProvider";
@@ -94,7 +94,7 @@ export default function Layouts() {
               </label>
               {layout.has_sample ? (
                 <Link to={`/layouts/${layout.id}`}>
-                  <img className="layout-thumb-lg" src={`/api/layouts/${layout.id}/sample?v=${layout.sample_rev || 0}`} alt="" />
+                  <img className="layout-thumb-lg" src={authFileUrl(`/api/layouts/${layout.id}/sample?v=${layout.sample_rev || 0}`)} alt={`${layout.name} thumbnail`} />
                 </Link>
               ) : (
                 <div className="layout-thumb-lg muted">No preview</div>

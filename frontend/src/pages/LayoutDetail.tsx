@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, Layout, Subject } from "../api";
+import { api, authFileUrl, Layout, Subject } from "../api";
 import { EditButton, EditLink, ViewButton } from "../components/ActionButtons";
 import BlockEditor from "../components/BlockEditor";
 import FieldMapper from "../components/FieldMapper";
@@ -123,10 +123,10 @@ export default function LayoutDetail() {
               </div>
               {layout.has_sample ? (
                 layout.is_studio ? (
-                  <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} thumbnail`} />
+                  <img className="sample-preview" src={authFileUrl(`/api/layouts/${layout.id}/sample`)} alt={`${layout.name} thumbnail`} />
                 ) : (
                 <SampleFieldOverlay
-                  src={`/api/layouts/${layout.id}/sample`}
+                  src={authFileUrl(`/api/layouts/${layout.id}/sample`)}
                   alt={`${layout.name} sample`}
                   analysis={layout.analysis || []}
                 />

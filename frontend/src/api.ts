@@ -11,12 +11,25 @@ export function getToken() {
 }
 
 export function setToken(token: string) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    document.cookie = `omr_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+    document.cookie = "omr_token=; path=/; max-age=0; SameSite=Lax";
+  }
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  document.cookie = "omr_token=; path=/; max-age=0; SameSite=Lax";
+}
+
+export function authFileUrl(path: string) {
+  const token = getToken();
+  if (!token) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}token=${encodeURIComponent(token)}`;
 }
 
 const json = async (res: Response) => {

@@ -89,7 +89,7 @@ async def require_api_login(request: Request, call_next):
         header = request.headers.get("authorization") or ""
         token = header.split(" ", 1)[1].strip() if header.lower().startswith("bearer ") else None
         if not token:
-            token = request.cookies.get("omr_token")
+            token = request.query_params.get("token") or request.cookies.get("omr_token")
         with SessionLocal() as db:
             user = user_from_token(db, token)
         if user is None:

@@ -54,7 +54,7 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
         total_questions=row.total_questions,
         options=row.options,
     )
-    item.has_sample = bool(getattr(row, "sample_path", ""))
+    item.has_sample = bool((getattr(row, "sample_path", "") or "").strip() and Path(row.sample_path).exists())
     item.is_studio = bool(config.get("studio"))
     item.is_finalized = bool(getattr(row, "is_finalized", True) or row.is_builtin)
     session = object_session(row)
@@ -519,9 +519,18 @@ def delete_layout(layout_id: int, db: Session = Depends(get_db)):
 @router.get("/{layout_id}/sample")
 def layout_sample(layout_id: int, db: Session = Depends(get_db)):
     row = db.get(OmrLayout, layout_id)
-    if not row or not getattr(row, "sample_path", "") or not Path(row.sample_path).exists():
-        raise HTTPException(404, "No sample OMR uploaded for this layout")
-    return FileResponse(row.sample_path, headers={"Cache-Control": "no-store, max-age=0"})
+    if not row:
+        raise HTTPException(404, "Layout not found")
+    path = Path(row.sample_path) if getattr(row, "sample_path", "") else None
+    if path is None or not path.exists():
+        image = _blank_sheet_image(row)
+        dest_dir = UPLOAD_DIR / "layouts"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        path = dest_dir / f"{row.slug}-preview-{uuid4().hex[:8]}.jpg"
+        save_image(path, image)
+        row.sample_path = str(path)
+        db.commit()
+    return FileResponse(path, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 def _blank_sheet_image(row: OmrLayout):

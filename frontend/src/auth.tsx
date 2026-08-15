@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setReady(true);
       return;
     }
+    setToken(getToken());
     api
       .get("/api/auth/me")
       .then((row) => setUser(row as AuthUser))

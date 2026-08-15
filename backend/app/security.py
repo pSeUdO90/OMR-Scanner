@@ -55,7 +55,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> AppUser
     header = request.headers.get("authorization") or ""
     token = header.split(" ", 1)[1].strip() if header.lower().startswith("bearer ") else None
     if not token:
-        token = request.cookies.get("omr_token")
+        token = request.query_params.get("token") or request.cookies.get("omr_token")
     user = user_from_token(db, token)
     if not user:
         raise HTTPException(401, "Not authenticated")
