@@ -242,7 +242,7 @@ export default function EvaluationPanel({
         <div className="card eval-compact-card">
           <h3>Upload Scanned OMR Sheets</h3>
           <p className="muted">
-            {keyComplete ? "Upload completed OMR scans for this exam." : "Mark every question in the Answer Key to enable upload."}
+            {keyComplete ? "Upload completed OMR scans, then Process OMR to de-skew before evaluation." : "Mark every question in the Answer Key to enable upload."}
           </p>
           <input
             ref={scanRef}
@@ -269,6 +269,29 @@ export default function EvaluationPanel({
           <div className="eval-inline-fields">
             <button type="button" disabled={!keyComplete} onClick={() => scanRef.current?.click()}>
               Upload Sheets
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!sheets.length}
+              onClick={async () => {
+                setErr("");
+                try {
+                  const res = await api.post(`/api/exams/${id}/process-omr`);
+                  const failed = Number(res.failed || 0);
+                  const processed = Number(res.processed || 0);
+                  if (failed) {
+                    setErr(`Process OMR finished with ${failed} failure(s). ${processed} sheet(s) aligned.`);
+                  } else {
+                    setMsg(`Process OMR aligned ${processed} sheet(s).`);
+                  }
+                  onReload();
+                } catch (error) {
+                  setErr(error instanceof Error ? error.message : "Process OMR failed");
+                }
+              }}
+            >
+              Process OMR
             </button>
           </div>
         </div>

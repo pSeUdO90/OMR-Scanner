@@ -18,6 +18,7 @@ from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Student, Subject
 from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet, prefill_on_layout_sample
+from ..omr.de_skew_engine import OMRAlignmentError, align_omr_sheet
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
 from ..omr.sample_file import sample_to_image_bytes
 from ..schemas import AnswerKeyIn, AssignSheetIn, ExamIn, ExamOut, GraceIn, SheetIdsIn, SheetOut, SubjectMapOut
@@ -387,6 +388,51 @@ def _sheet_out(sheet: ExamSheet) -> SheetOut:
 def list_sheets(exam_id: int, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
     return [_sheet_out(sheet) for sheet in exam.sheets]
+
+
+@router.post("/{exam_id}/process-omr")
+def process_omr_sheets(exam_id: int, debug: bool = True, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    if not exam.sheets:
+        raise HTTPException(400, "Upload scanned OMR sheets before processing")
+    layout = parse_layout(exam.layout.config_json)
+    processed = 0
+    failed = 0
+    results = []
+    for sheet in exam.sheets:
+        try:
+            debug_path = Path(sheet.stored_path).with_name(f"deskew-debug-{sheet.id}.png")
+            aligned, meta = align_omr_sheet(
+                sheet.stored_path,
+                layout,
+                debug=debug,
+                debug_path=debug_path,
+            )
+            aligned_path = Path(sheet.stored_path).with_name(f"aligned-{sheet.id}.png")
+            save_image(aligned_path, aligned)
+            sheet.stored_path = str(aligned_path)
+            if sheet.status == "error":
+                sheet.status = "uploaded"
+            sheet.error_message = ""
+            processed += 1
+            results.append(
+                {
+                    "sheet_id": sheet.id,
+                    "ok": True,
+                    "skew_angle": meta.get("skew_angle"),
+                    "confidence": meta.get("confidence"),
+                    "method": meta.get("method"),
+                    "rotated_180": meta.get("rotated_180"),
+                    "used_extrapolated_corner": meta.get("used_extrapolated_corner"),
+                }
+            )
+        except (OMRAlignmentError, ValueError, Exception) as exc:  # noqa: BLE001
+            failed += 1
+            sheet.status = "error"
+            sheet.error_message = str(exc)
+            results.append({"sheet_id": sheet.id, "ok": False, "error": str(exc)})
+    db.commit()
+    return {"processed": processed, "failed": failed, "results": results}
 
 
 @router.post("/{exam_id}/evaluate")

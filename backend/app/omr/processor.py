@@ -6,6 +6,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .de_skew_engine import OMRAlignmentError, align_omr_array
 from .layouts import clone_layout
 from .studio_render import apply_studio_eval_layout
 
@@ -38,6 +39,11 @@ def _find_timing_marks(binary: np.ndarray, side: str) -> list[tuple[float, float
 def align_sheet(image: np.ndarray, layout: dict) -> np.ndarray:
     gray = _to_gray(image)
     dst_w, dst_h = int(layout["page_width"]), int(layout["page_height"])
+    try:
+        warped, _meta = align_omr_array(image, layout, debug=False)
+        return _to_gray(warped)
+    except OMRAlignmentError:
+        pass
     if layout.get("studio"):
         warped = _align_studio_fiducials(gray, layout, dst_w, dst_h)
         if warped is not None:
