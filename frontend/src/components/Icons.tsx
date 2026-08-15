@@ -22,7 +22,9 @@ export const iconPaths = {
   calendar: "M7 4v3M17 4v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z",
   published: "M12 3l2.2 4.6L19 8.2l-3.5 3.4.8 4.8L12 14.8 7.7 16.4l.8-4.8L5 8.2l4.8-.6L12 3Z",
   draft: "M5 19h14M7 16V8l5-3 5 3v8",
-  sheet: "M7 3h8l4 4v14H7V3Zm8 0v4h4M10 12h6M10 16h6",
+  settings: "M12 8.5A3.5 3.5 0 1 1 8.5 12 3.5 3.5 0 0 1 12 8.5ZM4 12h2m12 0h2M12 4v2m0 12v2M6.2 6.2l1.4 1.4m8.8 8.8 1.4 1.4M17.8 6.2l-1.4 1.4M7.6 16.4l-1.4 1.4",
+  users: "M16 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0ZM4 19a6 6 0 0 1 12 0M17 8a3 3 0 1 1 0 6M20.5 19a5 5 0 0 0-4-4.7",
+  logout: "M15 12H4m0 0 3-3M4 12l3 3M10 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7",
 };
 
 export function NavIcon({ name }: { name: keyof typeof iconPaths }) {

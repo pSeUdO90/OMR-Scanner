@@ -29,6 +29,30 @@ class SubjectOut(SubjectIn):
     model_config = {"from_attributes": True}
 
 
+class StudioLayoutIn(BaseModel):
+    name: str
+    description: str = ""
+    total_questions: int = 100
+    options: str = "ABCD"
+    config: dict = Field(default_factory=dict)
+    geometry: dict = Field(default_factory=dict)
+    blocks: list[dict] = Field(default_factory=list)
+    mapping: dict = Field(default_factory=dict)
+    thumbnail_base64: str = ""
+
+
+class LayoutDesignIn(BaseModel):
+    name: str
+    description: str = ""
+    total_questions: int = 100
+    columns: int = 4
+    options: str = "ABCD"
+    roll_cols: int = 8
+    subject_maps: list[dict] = Field(default_factory=list)
+    blocks: list[dict] | None = None
+    school_name: str = "GYANA VIKASH ENGLISH MEDIUM SCHOOL, BERHAMPUR"
+
+
 class LayoutOut(BaseModel):
     id: int
     slug: str
@@ -39,8 +63,16 @@ class LayoutOut(BaseModel):
     is_builtin: bool
     has_sample: bool = False
     field_map: dict[str, str] = Field(default_factory=dict)
+    blocks: list[dict] = Field(default_factory=list)
     analysis: list[dict] = Field(default_factory=list)
     preview: dict | None = None
+    is_studio: bool = False
+    is_finalized: bool = False
+    in_use: bool = False
+    sample_rev: int = 0
+    studio_config: dict = Field(default_factory=dict)
+    studio_geometry: dict = Field(default_factory=dict)
+    studio_blocks: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -116,6 +148,14 @@ class AnswerKeyIn(BaseModel):
     key_string: str | None = None
 
 
+class AssignSheetIn(BaseModel):
+    student_id: int
+
+
+class SheetIdsIn(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+
+
 class SheetOut(BaseModel):
     id: int
     exam_id: int
@@ -131,6 +171,8 @@ class SheetOut(BaseModel):
     wrong_count: int
     left_count: int
     invalid_count: int
+    has_overlay: bool = False
+    assigned_manually: bool = False
 
     model_config = {"from_attributes": True}
 

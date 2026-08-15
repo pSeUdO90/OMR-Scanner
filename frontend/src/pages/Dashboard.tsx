@@ -2,16 +2,21 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Exam, Student } from "../api";
 import { EditLink } from "../components/ActionButtons";
+import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../components/BulkSelect";
+import { useConfirm } from "../components/ConfirmProvider";
 import { Icon, iconPaths } from "../components/Icons";
 import PageTitle from "../components/PageTitle";
 
 export default function Dashboard() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  useEffect(() => {
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const confirm = useConfirm();
+  const load = () => {
     api.get("/api/exams").then((rows) => setExams(rows as Exam[]));
     api.get("/api/students").then((rows) => setStudents(rows as Student[]));
-  }, []);
+  };
+  useEffect(() => { load(); }, []);
   const published = exams.filter((e) => e.status === "published");
   const evaluated = exams.filter((e) => e.status === "evaluated" || e.status === "published");
   const recent = evaluated.slice(0, 12);
@@ -42,9 +47,28 @@ export default function Dashboard() {
         {recent.length === 0 ? (
           <p className="muted">No evaluated or published exams yet. Draft exams are listed under Exams until you evaluate them.</p>
         ) : (
+          <>
+          <BulkBar
+            count={selected.size}
+            onDelete={async () => {
+              const ok = await confirm({
+                title: "Delete exams",
+                message: `Delete ${selected.size} exam(s)? This cannot be undone.`,
+              });
+              if (!ok) return;
+              for (const id of selected) await api.del(`/api/exams/${id}`);
+              setSelected(new Set());
+              load();
+            }}
+          />
           <table>
             <thead>
               <tr>
+                <SelectAllCell
+                  checked={recent.length > 0 && recent.every((e) => selected.has(e.id))}
+                  indeterminate={recent.some((e) => selected.has(e.id))}
+                  onChange={(on) => setSelected(setAll(recent.map((e) => e.id), on))}
+                />
                 <th>Exam Name</th><th>Date</th><th>Class</th><th>Section</th><th>Batch</th>
                 <th>Test ID</th><th>Status</th><th>Sheets</th><th></th>
               </tr>
@@ -52,6 +76,7 @@ export default function Dashboard() {
             <tbody>
               {recent.map((exam) => (
                 <tr key={exam.id}>
+                  <SelectCell checked={selected.has(exam.id)} onChange={(on) => setSelected(toggleId(selected, exam.id, on))} label={`Select ${exam.name}`} />
                   <td><Link to={`/exams/${exam.id}`}>{exam.name}</Link></td>
                   <td>{exam.exam_date}</td>
                   <td>{exam.class_name || "—"}</td>
@@ -68,6 +93,7 @@ export default function Dashboard() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </>

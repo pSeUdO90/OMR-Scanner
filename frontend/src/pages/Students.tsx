@@ -1,9 +1,26 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api, Student } from "../api";
-import { DeleteButton, ViewLink } from "../components/ActionButtons";
+import { api, authFileUrl, Student } from "../api";
+import { DeleteButton, EditButton, ViewLink } from "../components/ActionButtons";
+import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../components/BulkSelect";
+import { useConfirm } from "../components/ConfirmProvider";
 import PageTitle from "../components/PageTitle";
 
-const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
+const CLASS_CHOICES = ["6", "7", "8", "9", "10", "11", "12"];
+const SECTION_CHOICES = ["A", "B", "C", "D", "E", "F"];
+const SESSION_CHOICES = ["2024-25", "2025-26", "2026-27"];
+
+function mergeChoices(base: string[], extra: string[], current: string) {
+  return Array.from(new Set([...base, ...extra, current].map((item) => item.trim()).filter(Boolean)));
+}
+
+const empty = {
+  roll_no: "",
+  name: "",
+  gender: "M",
+  class_name: "",
+  section: "",
+  session: "",
+};
 const labels: Record<string, string> = {
   roll_no: "Roll no",
   name: "Student Name",
@@ -21,8 +38,27 @@ export default function Students() {
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingFile = useRef<File | null>(null);
+  const confirm = useConfirm();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [choices, setChoices] = useState<{ classes: string[]; sections: string[]; batches: string[] }>({
+    classes: [],
+    sections: [],
+    batches: [],
+  });
   const [conflict, setConflict] = useState<{ existing: { roll_no: string; name: string; current_name: string }[]; newCount: number } | null>(null);
-  const load = () => api.get("/api/students").then(setRows);
+  const load = () => {
+    api.get("/api/students").then(setRows).catch((error) => {
+      setErr(error instanceof Error ? error.message : "Could not load students");
+    });
+    api.get("/api/students/options").then((row) =>
+      setChoices({
+        classes: (row.classes as string[]) || [],
+        sections: (row.sections as string[]) || [],
+        batches: (row.batches as string[]) || [],
+      }),
+    ).catch(() => undefined);
+  };
   useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => {
@@ -40,7 +76,12 @@ export default function Students() {
     e.preventDefault();
     setErr("");
     try {
-      await api.post("/api/students", form);
+      if (editingId) {
+        await api.put(`/api/students/${editingId}`, form);
+        setEditingId(null);
+      } else {
+        await api.post("/api/students", form);
+      }
       setForm(empty);
       load();
     } catch (error) {
@@ -81,7 +122,7 @@ export default function Students() {
       </PageTitle>
       <div className="card">
         <div className="row">
-          <a className="btn" href="/api/students/template.xlsx">Download XLSX template</a>
+          <a className="btn" href={authFileUrl("/api/students/template.xlsx")}>Download XLSX template</a>
           <input
             ref={fileRef}
             type="file"
@@ -105,7 +146,7 @@ export default function Students() {
         {err && <p className="error">{err}</p>}
       </div>
       <form className="card" onSubmit={onSubmit}>
-        <h3>Add student</h3>
+        <h3>{editingId ? "Edit student" : "Add student"}</h3>
         <div className="row">
           {(["roll_no", "name", "gender", "class_name", "section", "session"] as const).map((key) => (
             <label key={key}>
@@ -116,26 +157,101 @@ export default function Students() {
                   <option value="F">Female</option>
                   <option value="O">Other</option>
                 </select>
+              ) : key === "class_name" ? (
+                <select value={form.class_name} onChange={(e) => setForm({ ...form, class_name: e.target.value })} required>
+                  <option value="">Select class</option>
+                  {mergeChoices(CLASS_CHOICES, choices.classes, form.class_name).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              ) : key === "section" ? (
+                <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} required>
+                  <option value="">Select section</option>
+                  {mergeChoices(SECTION_CHOICES, choices.sections, form.section).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              ) : key === "session" ? (
+                <select value={form.session} onChange={(e) => setForm({ ...form, session: e.target.value })} required>
+                  <option value="">Select session</option>
+                  {mergeChoices(SESSION_CHOICES, choices.batches, form.session).map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
               ) : (
                 <input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required={key === "roll_no" || key === "name"} />
               )}
             </label>
           ))}
-          <button type="submit">Save student</button>
+          <button type="submit">{editingId ? "Update student" : "Save student"}</button>
+          {editingId && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setEditingId(null);
+                setForm(empty);
+              }}
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </form>
       <div className="card">
+        <BulkBar
+          count={selected.size}
+          onDelete={async () => {
+            const ok = await confirm({
+              title: "Delete students",
+              message: `Delete ${selected.size} student(s)? This cannot be undone.`,
+            });
+            if (!ok) return;
+            for (const id of selected) await api.del(`/api/students/${id}`);
+            setSelected(new Set());
+            load();
+          }}
+        />
         <table>
           <thead>
-            <tr><th>Roll no</th><th>Student Name</th><th>Gender</th><th>Class</th><th>Section</th><th>Session</th><th></th></tr>
+            <tr>
+              <SelectAllCell
+                checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))}
+                indeterminate={filtered.some((s) => selected.has(s.id))}
+                onChange={(on) => setSelected(setAll(filtered.map((s) => s.id), on))}
+              />
+              <th>Roll no</th><th>Student Name</th><th>Gender</th><th>Class</th><th>Section</th><th>Session</th><th></th>
+            </tr>
           </thead>
           <tbody>
             {filtered.map((s) => (
               <tr key={s.id}>
+                <SelectCell checked={selected.has(s.id)} onChange={(on) => setSelected(toggleId(selected, s.id, on))} label={`Select ${s.roll_no}`} />
                 <td>{s.roll_no}</td><td>{s.name}</td><td>{s.gender}</td><td>{s.class_name}</td><td>{s.section}</td><td>{s.session}</td>
                 <td className="row-actions">
                   <ViewLink to={`/students/${s.id}`}>View</ViewLink>
-                  <DeleteButton onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</DeleteButton>
+                  <EditButton
+                    onClick={() => {
+                      setEditingId(s.id);
+                      setForm({
+                        roll_no: s.roll_no,
+                        name: s.name,
+                        gender: s.gender || "M",
+                        class_name: s.class_name,
+                        section: s.section,
+                        session: s.session,
+                      });
+                      setErr("");
+                    }}
+                  >
+                    Edit
+                  </EditButton>
+                  <DeleteButton onClick={async () => {
+                    const ok = await confirm({ title: "Delete student", message: `Delete “${s.name}”? This cannot be undone.` });
+                    if (!ok) return;
+                    await api.del(`/api/students/${s.id}`);
+                    load();
+                  }}>Delete</DeleteButton>
                 </td>
               </tr>
             ))}

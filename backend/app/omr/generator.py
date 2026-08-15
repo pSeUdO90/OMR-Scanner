@@ -99,6 +99,106 @@ def prefill_on_layout_sample(
     return canvas
 
 
+def generate_designed_sheet(
+    layout: dict,
+    roll: str = "",
+    answers: dict[int, str] | None = None,
+    *,
+    student_name: str = "",
+    test_id: str = "",
+    test_no: str = "",
+    exam_date: str = "",
+) -> np.ndarray:
+    """Render a printable A4 OMR from predefined/manual data blocks."""
+    layout = clone_layout(layout)
+    w, h = int(layout.get("page_width") or 1654), int(layout.get("page_height") or 2339)
+    canvas = np.full((h, w, 3), 255, dtype=np.uint8)
+    crimson = (53, 14, 166)
+    midnight = (45, 26, 5)
+    teal = (135, 129, 6)
+    cv2.rectangle(canvas, (8, 8), (w - 9, h - 9), crimson, 5)
+    _draw_timing_marks(canvas, layout)
+    school = str(layout.get("school_name") or "GYANA VIKASH ENGLISH MEDIUM SCHOOL, BERHAMPUR")
+    cv2.putText(canvas, school[:62], (int(0.07 * w), int(0.038 * h)), cv2.FONT_HERSHEY_SIMPLEX, 0.62, crimson, 2, cv2.LINE_AA)
+    subtitle = f"{layout.get('name') or 'OMR'}  ·  A4  ·  {layout.get('total_questions')} Q  ·  {layout.get('options', 'ABCD')}"
+    cv2.putText(canvas, subtitle[:70], (int(0.07 * w), int(0.058 * h)), cv2.FONT_HERSHEY_SIMPLEX, 0.42, midnight, 1, cv2.LINE_AA)
+    if student_name:
+        _put_text(canvas, student_name, layout.get("name_text"), (0.07, 0.072))
+
+    answers = answers or {}
+    for block in layout.get("blocks") or []:
+        _draw_block_frame(canvas, block, midnight)
+        kind = block["kind"]
+        if kind == "name":
+            _draw_name_block(canvas, layout.get("name") or {}, student_name)
+        elif kind in ("roll", "test_no", "test_id", "date"):
+            value = {"roll": roll, "test_id": test_id, "test_no": test_no, "date": date_digits(exam_date, int(block.get("cols") or 6))}[kind]
+            _fill_digit_grid(canvas, layout.get(kind), value)
+            _draw_digit_row_labels(canvas, block)
+        elif kind == "answers":
+            _draw_answer_headers(canvas, block, layout.get("options") or "ABCD")
+
+    for question in layout.get("questions") or []:
+        marked = answers.get(int(question["number"]), "")
+        opts = question["options"]
+        if opts:
+            qx = int((opts[0]["x"] - 0.018) * w)
+            qy = int(opts[0]["y"] * h + 4)
+            cv2.putText(canvas, f"{question['number']:02d}", (max(8, qx), qy), cv2.FONT_HERSHEY_SIMPLEX, 0.28, teal, 1, cv2.LINE_AA)
+        for opt in opts:
+            _fill_bubble(canvas, opt["x"], opt["y"], opt["r"], opt["label"] == marked)
+    return canvas
+
+
+def _draw_block_frame(canvas: np.ndarray, block: dict, color: tuple[int, int, int]) -> None:
+    h, w = canvas.shape[:2]
+    x0, y0 = int(block["x0"] * w), int(block["y0"] * h)
+    x1, y1 = int(block["x1"] * w), int(block["y1"] * h)
+    cv2.rectangle(canvas, (x0, y0), (x1, y1), color, 1)
+    label = str(block.get("label") or block.get("kind") or "")
+    cv2.putText(canvas, label, (x0, max(16, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1, cv2.LINE_AA)
+
+
+def _draw_digit_row_labels(canvas: np.ndarray, block: dict) -> None:
+    h, w = canvas.shape[:2]
+    rows = int(block.get("rows") or 10)
+    y0, y1 = block["y0"], block["y1"]
+    x0 = block["x0"]
+    row_h = (y1 - y0) / rows
+    for d in range(min(rows, 10)):
+        y = int((y0 + (d + 0.5) * row_h) * h + 4)
+        cv2.putText(canvas, str(d), (int(x0 * w) - 14, y), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (40, 40, 40), 1, cv2.LINE_AA)
+
+
+def _draw_answer_headers(canvas: np.ndarray, block: dict, options: str) -> None:
+    h, w = canvas.shape[:2]
+    letters = options or "ABCD"
+    n = len(letters)
+    x0, x1, y0 = block["x0"], block["x1"], block["y0"]
+    col_w = (x1 - x0) / n
+    for j, letter in enumerate(letters):
+        x = int((x0 + (j + 0.5) * col_w) * w - 4)
+        cv2.putText(canvas, letter, (x, int(y0 * h) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (40, 40, 40), 1, cv2.LINE_AA)
+
+
+def _draw_name_block(canvas: np.ndarray, grid: dict, student_name: str) -> None:
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    name = "".join(ch for ch in (student_name or "").upper() if ch in letters)
+    for bubble in grid.get("bubbles") or []:
+        col = int(bubble.get("col") or 0)
+        filled = col < len(name) and bubble.get("letter") == name[col]
+        _fill_bubble(canvas, bubble["x"], bubble["y"], bubble["r"], filled)
+    h, w = canvas.shape[:2]
+    box = grid.get("box") or {}
+    rows = int(grid.get("rows") or 26)
+    if box and rows:
+        y0, y1, x0 = float(box["y0"]), float(box["y1"]), float(box["x0"])
+        row_h = (y1 - y0) / rows
+        for r, letter in enumerate(letters[:rows]):
+            y = int((y0 + (r + 0.5) * row_h) * h + 4)
+            cv2.putText(canvas, letter, (int(x0 * w) - 14, y), cv2.FONT_HERSHEY_SIMPLEX, 0.28, (40, 40, 40), 1, cv2.LINE_AA)
+
+
 def generate_sheet(
     layout: dict,
     roll: str,
@@ -107,7 +207,18 @@ def generate_sheet(
     student_name: str = "",
     test_id: str = "",
     test_no: str = "",
+    exam_date: str = "",
 ) -> np.ndarray:
+    if layout.get("designed") or layout.get("blocks"):
+        return generate_designed_sheet(
+            layout,
+            roll,
+            answers,
+            student_name=student_name,
+            test_id=test_id,
+            test_no=test_no,
+            exam_date=exam_date,
+        )
     layout = clone_layout(layout)
     w, h = int(layout["page_width"]), int(layout["page_height"])
     canvas = np.full((h, w, 3), 255, dtype=np.uint8)

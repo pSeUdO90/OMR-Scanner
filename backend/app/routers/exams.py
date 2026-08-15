@@ -18,9 +18,11 @@ from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Student, Subject
 from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet, prefill_on_layout_sample
+from ..omr.de_skew_engine import OMRAlignmentError, align_omr_sheet
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
+from ..settings_store import exam_processed_dir
 from ..omr.sample_file import sample_to_image_bytes
-from ..schemas import AnswerKeyIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
+from ..schemas import AnswerKeyIn, AssignSheetIn, ExamIn, ExamOut, GraceIn, SheetIdsIn, SheetOut, SubjectMapOut
 from ..scoring import assigned_students, bind_sheet_student, build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
@@ -126,6 +128,8 @@ def create_exam(payload: ExamIn, db: Session = Depends(get_db)):
     layout = db.get(OmrLayout, payload.layout_id)
     if not layout:
         raise HTTPException(400, "Layout not found")
+    if not (layout.is_builtin or getattr(layout, "is_finalized", False)):
+        raise HTTPException(400, "Only finalized OMR layouts can be used in an exam")
     exam = Exam(
         name=payload.name,
         exam_date=payload.exam_date,
@@ -311,6 +315,7 @@ async def upload_answer_key(exam_id: int, file: UploadFile = File(...), db: Sess
     if not key:
         raise HTTPException(400, "Could not read an answer key from that file")
     exam.answer_key_json = json.dumps(key)
+    rescore_stored_sheets(db, exam)
     db.commit()
     return _exam_out(_load_exam(db, exam.id))
 
@@ -323,6 +328,7 @@ def set_answer_key(exam_id: int, payload: AnswerKeyIn, db: Session = Depends(get
         letters = [ch.upper() for ch in payload.key_string if ch.upper() in "ABCD"]
         key = {str(i + 1): letter for i, letter in enumerate(letters)}
     exam.answer_key_json = json.dumps(key)
+    rescore_stored_sheets(db, exam)
     db.commit()
     return _exam_out(_load_exam(db, exam_id))
 
@@ -374,13 +380,93 @@ def _sheet_out(sheet: ExamSheet) -> SheetOut:
         wrong_count=sheet.wrong_count,
         left_count=sheet.left_count,
         invalid_count=sheet.invalid_count,
+        has_overlay=bool(sheet.overlay_path and Path(sheet.overlay_path).exists()),
+        assigned_manually=bool(getattr(sheet, "assigned_manually", False)),
     )
+
+
+def _copy_to_exam_folder(db: Session, exam: Exam, sheet: ExamSheet, aligned_path: Path) -> str:
+    dest_dir = exam_processed_dir(db, exam)
+    stem = Path(sheet.filename or aligned_path.name).stem or f"sheet-{sheet.id}"
+    dest = dest_dir / f"{stem}{aligned_path.suffix or '.png'}"
+    if dest.exists():
+        dest = dest_dir / f"{stem}-{sheet.id}{aligned_path.suffix or '.png'}"
+    shutil.copy2(aligned_path, dest)
+    return str(dest)
+
+
+def _process_one_sheet(db: Session, exam: Exam, sheet: ExamSheet, layout: dict, *, debug: bool = True) -> dict:
+    debug_path = Path(sheet.stored_path).with_name(f"deskew-debug-{sheet.id}.png")
+    aligned, meta = align_omr_sheet(sheet.stored_path, layout, debug=debug, debug_path=debug_path)
+    aligned_path = Path(sheet.stored_path).with_name(f"aligned-{sheet.id}.png")
+    save_image(aligned_path, aligned)
+    sheet.stored_path = str(aligned_path)
+    exported = _copy_to_exam_folder(db, exam, sheet, aligned_path)
+    if sheet.status == "error":
+        sheet.status = "uploaded"
+    sheet.error_message = ""
+    return {
+        "sheet_id": sheet.id,
+        "filename": sheet.filename,
+        "ok": True,
+        "skew_angle": meta.get("skew_angle"),
+        "confidence": meta.get("confidence"),
+        "method": meta.get("method"),
+        "rotated_180": meta.get("rotated_180"),
+        "used_extrapolated_corner": meta.get("used_extrapolated_corner"),
+        "exported_path": exported,
+    }
 
 
 @router.get("/{exam_id}/sheets", response_model=list[SheetOut])
 def list_sheets(exam_id: int, db: Session = Depends(get_db)):
     exam = _load_exam(db, exam_id)
     return [_sheet_out(sheet) for sheet in exam.sheets]
+
+
+@router.post("/{exam_id}/process-omr")
+def process_omr_sheets(exam_id: int, debug: bool = True, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    if not exam.sheets:
+        raise HTTPException(400, "Upload scanned OMR sheets before processing")
+    layout = parse_layout(exam.layout.config_json)
+    processed = 0
+    failed = 0
+    results = []
+    for sheet in exam.sheets:
+        try:
+            results.append(_process_one_sheet(db, exam, sheet, layout, debug=debug))
+            processed += 1
+        except (OMRAlignmentError, ValueError, Exception) as exc:  # noqa: BLE001
+            failed += 1
+            sheet.status = "error"
+            sheet.error_message = str(exc)
+            results.append({"sheet_id": sheet.id, "filename": sheet.filename, "ok": False, "error": str(exc)})
+    db.commit()
+    return {
+        "processed": processed,
+        "failed": failed,
+        "results": results,
+        "output_dir": str(exam_processed_dir(db, exam)),
+    }
+
+
+@router.post("/{exam_id}/sheets/{sheet_id}/process")
+def process_one_omr_sheet(exam_id: int, sheet_id: int, debug: bool = True, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    sheet = next((row for row in exam.sheets if row.id == sheet_id), None)
+    if sheet is None:
+        raise HTTPException(404, "Sheet not found")
+    layout = parse_layout(exam.layout.config_json)
+    try:
+        result = _process_one_sheet(db, exam, sheet, layout, debug=debug)
+        db.commit()
+        return result
+    except (OMRAlignmentError, ValueError, Exception) as exc:  # noqa: BLE001
+        sheet.status = "error"
+        sheet.error_message = str(exc)
+        db.commit()
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/{exam_id}/evaluate")
@@ -540,12 +626,83 @@ def exam_results_xlsx(exam_id: int, db: Session = Depends(get_db)):
     )
 
 
+def _get_sheet(db: Session, exam_id: int, sheet_id: int) -> ExamSheet:
+    sheet = db.get(ExamSheet, sheet_id)
+    if not sheet or sheet.exam_id != exam_id:
+        raise HTTPException(404, "Sheet not found")
+    return sheet
+
+
 @router.get("/{exam_id}/sheets/{sheet_id}/overlay")
 def sheet_overlay(exam_id: int, sheet_id: int, db: Session = Depends(get_db)):
-    sheet = db.get(ExamSheet, sheet_id)
-    if not sheet or sheet.exam_id != exam_id or not sheet.overlay_path:
-        raise HTTPException(404, "Overlay not found")
-    return FileResponse(sheet.overlay_path)
+    sheet = _get_sheet(db, exam_id, sheet_id)
+    if sheet.overlay_path and Path(sheet.overlay_path).exists():
+        return FileResponse(sheet.overlay_path)
+    if sheet.stored_path and Path(sheet.stored_path).exists():
+        return FileResponse(sheet.stored_path)
+    raise HTTPException(404, "Sheet image not found")
+
+
+@router.get("/{exam_id}/sheets/{sheet_id}/image")
+def sheet_image(exam_id: int, sheet_id: int, db: Session = Depends(get_db)):
+    sheet = _get_sheet(db, exam_id, sheet_id)
+    path = sheet.overlay_path if sheet.overlay_path and Path(sheet.overlay_path).exists() else sheet.stored_path
+    if not path or not Path(path).exists():
+        raise HTTPException(404, "Sheet image not found")
+    return FileResponse(path)
+
+
+@router.post("/{exam_id}/sheets/bulk-delete")
+def bulk_delete_sheets(exam_id: int, payload: SheetIdsIn, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    removed = 0
+    for sheet in list(exam.sheets):
+        if sheet.id not in payload.ids:
+            continue
+        for path in (sheet.stored_path, sheet.overlay_path):
+            if path and Path(path).exists():
+                Path(path).unlink(missing_ok=True)
+        db.delete(sheet)
+        removed += 1
+    db.commit()
+    return {"ok": True, "removed": removed}
+
+
+@router.put("/{exam_id}/sheets/{sheet_id}/assign", response_model=SheetOut)
+def assign_sheet(exam_id: int, sheet_id: int, payload: AssignSheetIn, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    sheet = _get_sheet(db, exam_id, sheet_id)
+    student = db.get(Student, payload.student_id)
+    if not student:
+        raise HTTPException(404, "Student not found")
+    sheet.student_id = student.id
+    sheet.assigned_manually = True
+    sheet.error_message = ""
+    if sheet.answers_json and sheet.answers_json != "{}":
+        sheet.status = "evaluated"
+    elif sheet.status == "unmatched":
+        sheet.status = "uploaded"
+    db.commit()
+    db.refresh(sheet)
+    return _sheet_out(sheet)
+
+
+@router.post("/{exam_id}/reset-omr")
+def reset_omr(exam_id: int, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    removed = 0
+    for sheet in list(exam.sheets):
+        for path in (sheet.stored_path, sheet.overlay_path):
+            if path:
+                file_path = Path(path)
+                if file_path.exists() and file_path.is_file():
+                    file_path.unlink()
+        db.delete(sheet)
+        removed += 1
+    if exam.status in ("evaluated", "published"):
+        exam.status = "draft"
+    db.commit()
+    return {"ok": True, "removed": removed, "status": exam.status}
 
 
 @router.post("/{exam_id}/sample-sheet")

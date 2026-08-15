@@ -55,24 +55,55 @@ def assigned_students(db: Session, exam: Exam) -> list[Student]:
     return query.order_by(Student.roll_no).all()
 
 
+def _roll_key(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit()).lstrip("0") or "0"
+
+
+def find_student_by_roll(db: Session, detected_roll: str) -> Student | None:
+    roll = (detected_roll or "").strip()
+    if not roll:
+        return None
+    student = db.query(Student).filter(Student.roll_no == roll).one_or_none()
+    if student:
+        return student
+    key = _roll_key(roll)
+    if len(key) < 4:
+        return None
+    for student in db.query(Student).all():
+        stored = (student.roll_no or "").strip()
+        if stored == roll or _roll_key(stored) == key:
+            return student
+        digits = "".join(ch for ch in stored if ch.isdigit())
+        detected_digits = "".join(ch for ch in roll if ch.isdigit())
+        if len(detected_digits) >= 5 and (digits.endswith(detected_digits) or detected_digits.endswith(digits)):
+            return student
+    return None
+
+
 def bind_sheet_student(db: Session, exam: Exam, sheet: ExamSheet, detected_roll: str, *, scored: bool = False) -> bool:
     roll = (detected_roll or "").strip()
     sheet.detected_roll = roll
-    student = db.query(Student).filter(Student.roll_no == roll).one_or_none() if roll else None
-    assigned_ids = {row.id for row in assigned_students(db, exam)}
-    if student and student.id in assigned_ids:
+    if getattr(sheet, "assigned_manually", False) and sheet.student_id:
+        if scored:
+            sheet.status = "evaluated"
+            sheet.error_message = ""
+        return True
+    student = find_student_by_roll(db, roll)
+    if student:
         sheet.student_id = student.id
         if scored:
             sheet.status = "evaluated"
             sheet.error_message = ""
         return True
-    sheet.student_id = student.id if student else None
-    if roll:
+    sheet.student_id = None
+    if scored:
         sheet.status = "unmatched"
         sheet.error_message = (
-            "Student is not assigned to this exam" if student else "Roll number not found in student list"
+            "Could not read roll number from the OMR sheet"
+            if not roll
+            else "Roll number not found in student list"
         )
-    elif scored:
+    elif roll:
         sheet.status = "unmatched"
         sheet.error_message = "Roll number not found in student list"
     return False

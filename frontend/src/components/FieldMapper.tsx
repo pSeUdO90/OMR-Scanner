@@ -16,13 +16,13 @@ export default function FieldMapper({
   if (!analysis.length) return null;
   return (
     <div>
-      <h3>Detected OMR fields</h3>
-      <p className="muted">Map Date, Test ID, and Test No from the sheet to exam data.</p>
+      <h3>Mapped OMR fields</h3>
+      <p className="muted">These classes come from blocks you drew on the sample. Map Date, Test ID, and Test No to exam data if needed.</p>
       <table>
         <thead>
           <tr>
-            <th>Field on OMR</th>
-            <th>Detected</th>
+            <th>Class</th>
+            <th>Detected on sample</th>
             <th>Read value</th>
             <th>Map to exam</th>
           </tr>
@@ -30,7 +30,9 @@ export default function FieldMapper({
         <tbody>
           {analysis.map((field) => (
             <tr key={field.key}>
-              <td>{field.label}</td>
+              <td>
+                <span className={`field-class field-class-${field.key}`}>{field.class || field.label}</span>
+              </td>
               <td>{field.detected ? field.detail : "Not found"}</td>
               <td>{field.value || "—"}</td>
               <td>

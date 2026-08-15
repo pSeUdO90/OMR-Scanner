@@ -1,3 +1,37 @@
+import type { DataBlock } from "./blockKinds";
+import { showToast } from "./components/ToastProvider";
+
+export type { DataBlock };
+export { BLOCK_KINDS, FIELD_TARGETS } from "./blockKinds";
+
+const TOKEN_KEY = "omr_token";
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || "";
+}
+
+export function setToken(token: string) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    document.cookie = `omr_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+    document.cookie = "omr_token=; path=/; max-age=0; SameSite=Lax";
+  }
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  document.cookie = "omr_token=; path=/; max-age=0; SameSite=Lax";
+}
+
+export function authFileUrl(path: string) {
+  const token = getToken();
+  if (!token) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}token=${encodeURIComponent(token)}`;
+}
+
 const json = async (res: Response) => {
   const text = await res.text();
   let data: unknown = text;
@@ -6,28 +40,72 @@ const json = async (res: Response) => {
   } catch {
     data = text;
   }
+  if (res.status === 401 && !res.url.includes("/api/auth/login")) {
+    clearToken();
+  }
   if (!res.ok) {
     const detail = typeof data === "object" && data && "detail" in data ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : text || res.statusText);
+    const message = typeof detail === "string" ? detail : text || res.statusText;
+    if (!res.url.includes("/api/settings/folders")) {
+      showToast("error", message);
+    }
+    throw new Error(message);
   }
   return data;
 };
 
+const skipSuccessToast = (path: string) =>
+  path.includes("/api/auth/login") ||
+  path.includes("/api/auth/logout") ||
+  path.includes("/api/auth/me") ||
+  path.includes("/import/preview");
+
+const toastSuccess = (path: string, fallback: string) => {
+  if (skipSuccessToast(path)) return;
+  if (path.includes("/reset-password")) {
+    showToast("ok", "Password reset to 123456");
+    return;
+  }
+  if (path.includes("/auth/password")) {
+    showToast("ok", "Password updated");
+    return;
+  }
+  showToast("ok", fallback);
+};
+
+const headersFor = (body?: unknown) => {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
+  return headers;
+};
+
 export const api = {
-  get: (path: string) => fetch(path).then(json),
+  get: (path: string) => fetch(path, { headers: headersFor() }).then(json),
   post: (path: string, body?: unknown) =>
     fetch(path, {
       method: "POST",
-      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body ?? {}),
-    }).then(json),
+    }).then(json).then((data) => {
+      toastSuccess(path, "Task completed");
+      return data;
+    }),
   put: (path: string, body: unknown) =>
     fetch(path, {
       method: "PUT",
-      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body),
-    }).then(json),
-  del: (path: string) => fetch(path, { method: "DELETE" }).then(json),
+    }).then(json).then((data) => {
+      toastSuccess(path, "Task completed");
+      return data;
+    }),
+  del: (path: string) =>
+    fetch(path, { method: "DELETE", headers: headersFor() }).then(json).then((data) => {
+      toastSuccess(path, "Task completed");
+      return data;
+    }),
 };
 
 export type Student = {
@@ -45,10 +123,12 @@ export type Subject = { id: number; name: string; code: string };
 export type AnalysisField = {
   key: string;
   label: string;
+  class?: string;
   detected: boolean;
   detail: string;
   value: string;
   mappable: boolean;
+  region?: { x0: number; y0: number; x1: number; y1: number } | null;
 };
 
 export type Layout = {
@@ -59,8 +139,16 @@ export type Layout = {
   total_questions: number;
   options: string;
   is_builtin?: boolean;
+  is_studio?: boolean;
+  is_finalized?: boolean;
+  in_use?: boolean;
+  sample_rev?: number;
   has_sample?: boolean;
+  studio_config?: Record<string, unknown>;
+  studio_geometry?: Record<string, unknown>;
+  studio_blocks?: unknown[];
   field_map?: Record<string, string>;
+  blocks?: DataBlock[];
   analysis?: AnalysisField[];
   preview?: { default_maps: { subject: string; start_q: number; end_q: number }[] };
 };
@@ -92,10 +180,3 @@ export type Exam = {
   field_map?: Record<string, string>;
   analysis?: AnalysisField[];
 };
-
-export const FIELD_TARGETS = [
-  { value: "", label: "Ignore" },
-  { value: "exam_date", label: "Exam Date" },
-  { value: "test_id", label: "Test ID" },
-  { value: "test_no", label: "Test No" },
-];

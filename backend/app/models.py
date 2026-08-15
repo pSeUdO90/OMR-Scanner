@@ -16,6 +16,39 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 
+class AppUser(Base):
+    __tablename__ = "app_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(String(160), default="")
+    role: Mapped[str] = mapped_column(String(20), default="user")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    token: Mapped[str] = mapped_column(String(80), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    user: Mapped[AppUser] = relationship(back_populates="sessions")
+
+
+class AppSettings(Base):
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    processed_images_dir: Mapped[str] = mapped_column(String(500), default="")
+    role_permissions_json: Mapped[str] = mapped_column(Text, default="{}")
+    logo_path: Mapped[str] = mapped_column(String(500), default="")
+
+
 class Student(Base):
     __tablename__ = "students"
 
@@ -53,6 +86,7 @@ class OmrLayout(Base):
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=True)
     sample_path: Mapped[str] = mapped_column(String(500), default="")
     field_map_json: Mapped[str] = mapped_column(Text, default="{}")
+    is_finalized: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Exam(Base):
@@ -122,6 +156,7 @@ class ExamSheet(Base):
     left_count: Mapped[int] = mapped_column(Integer, default=0)
     invalid_count: Mapped[int] = mapped_column(Integer, default=0)
     overlay_path: Mapped[str] = mapped_column(String(500), default="")
+    assigned_manually: Mapped[bool] = mapped_column(default=False)
 
     exam: Mapped[Exam] = relationship(back_populates="sheets")
     student: Mapped[Student | None] = relationship(back_populates="sheets")

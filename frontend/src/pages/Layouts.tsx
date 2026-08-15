@@ -1,121 +1,144 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { api, Layout, Subject } from "../api";
-import { DeleteButton, EditLink, ViewLink } from "../components/ActionButtons";
-import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api, authFileUrl, Layout } from "../api";
+import { DeleteButton, EditLink } from "../components/ActionButtons";
+import { BulkBar } from "../components/BulkSelect";
+import { useConfirm } from "../components/ConfirmProvider";
 import PageTitle from "../components/PageTitle";
 
 export default function Layouts() {
   const [rows, setRows] = useState<Layout[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    total_questions: 100,
-    columns: 4,
-    options: "ABCD",
-  });
-  const [maps, setMaps] = useState<SubjectMapRow[]>([{ subject: "Paper", start_q: 1, end_q: 100 }]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const confirm = useConfirm();
 
   const load = () => {
-    api.get("/api/layouts").then(setRows);
-    api.get("/api/subjects").then((list: Subject[]) => {
-      setSubjects(list);
-      if (list.length && maps.length === 1 && maps[0].subject === "Paper") {
-        setMaps([{ subject_id: list[0].id, subject: list[0].name, start_q: 1, end_q: form.total_questions }]);
-      }
-    });
+    api.get("/api/layouts").then((list) => setRows(list as Layout[]));
   };
   useEffect(() => { load(); }, []);
 
-  const onCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    setErr("");
-    const file = fileRef.current?.files?.[0];
-    if (!file) {
-      setErr("PDF/JPG of the sample OMR must be uploaded");
-      return;
-    }
-    const data = new FormData();
-    data.append("name", form.name);
-    data.append("description", form.description);
-    data.append("total_questions", String(form.total_questions));
-    data.append("columns", String(form.columns));
-    data.append("options", form.options);
-    data.append("subject_maps", JSON.stringify(maps.map((m) => ({
-      subject: subjects.find((s) => s.id === m.subject_id)?.name || m.subject,
-      start_q: m.start_q,
-      end_q: m.end_q,
-    }))));
-    data.append("sample", file);
-    try {
-      await api.post("/api/layouts", data);
-      setMsg("Layout created.");
-      setForm({ ...form, name: "", description: "" });
-      if (fileRef.current) fileRef.current.value = "";
-      load();
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : "Could not create layout");
-    }
-  };
-
   const onDelete = async (layout: Layout) => {
+    const ok = await confirm({
+      title: "Delete layout",
+      message: `Delete “${layout.name}”? Layouts used by an exam cannot be deleted.`,
+    });
+    if (!ok) return;
     setErr("");
     try {
       await api.del(`/api/layouts/${layout.id}`);
       setMsg(`Deleted ${layout.name}.`);
+      setSelected((cur) => {
+        const next = new Set(cur);
+        next.delete(layout.id);
+        return next;
+      });
       load();
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not delete layout");
     }
   };
 
+  const toggle = (id: number, on: boolean) => {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
   return (
     <>
-      <PageTitle icon="layouts" subtitle="Create a layout from a printed sample, then map subjects to question ranges.">
+      <PageTitle icon="layouts" subtitle="Create and edit sheets in A4 OMR Studio. Saved sheets appear below.">
         OMR layouts
       </PageTitle>
-      <form className="card" onSubmit={onCreate}>
-        <h3>Create a new layout</h3>
-        <div className="row">
-          <label>Layout name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-          <label>Total questions<input type="number" min={1} value={form.total_questions} onChange={(e) => setForm({ ...form, total_questions: Number(e.target.value) })} /></label>
-          <label>Columns<input type="number" min={1} max={6} value={form.columns} onChange={(e) => setForm({ ...form, columns: Number(e.target.value) })} /></label>
-          <label>Options<input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} /></label>
+      <p className="card">
+        <Link className="btn-view" to="/layouts/studio">Open A4 OMR Studio</Link>
+        <span className="muted"> Design, print, export JSON, and save to this list.</span>
+      </p>
+      {msg && <p>{msg}</p>}
+      {err && <p className="error">{err}</p>}
+      <div className="card">
+        <h3>Saved layouts</h3>
+        <BulkBar
+          count={selected.size}
+          onDelete={async () => {
+            const ok = await confirm({
+              title: "Delete layouts",
+              message: `Delete ${selected.size} layout(s)? Layouts used by an exam cannot be deleted.`,
+            });
+            if (!ok) return;
+            setErr("");
+            try {
+              for (const id of selected) await api.del(`/api/layouts/${id}`);
+              setSelected(new Set());
+              setMsg("Deleted selected layouts.");
+              load();
+            } catch (error) {
+              setErr(error instanceof Error ? error.message : "Could not delete layout");
+            }
+          }}
+        />
+        {rows.length === 0 && <p className="muted">No saved layouts yet. Open A4 OMR Studio and click Save.</p>}
+        <div className="layout-grid layout-grid-3">
+          {rows.map((layout) => (
+            <article className="card layout-card" key={layout.id}>
+              <label className="layout-select">
+                <input
+                  type="checkbox"
+                  checked={selected.has(layout.id)}
+                  onChange={(e) => toggle(layout.id, e.target.checked)}
+                  aria-label={`Select ${layout.name}`}
+                />
+              </label>
+              {layout.has_sample ? (
+                <Link to={`/layouts/${layout.id}`}>
+                  <img className="layout-thumb-lg" src={authFileUrl(`/api/layouts/${layout.id}/sample?v=${layout.sample_rev || 0}`)} alt={`${layout.name} thumbnail`} />
+                </Link>
+              ) : (
+                <div className="layout-thumb-lg muted">No preview</div>
+              )}
+              <h3>
+                <Link to={`/layouts/${layout.id}`}>{layout.name}</Link>
+              </h3>
+              <p className="muted">
+                {layout.total_questions} questions · {layout.options}
+                {layout.is_studio ? " · OMR Studio" : layout.is_builtin ? " · built-in" : " · custom"}
+                {layout.in_use ? " · used in exam" : layout.is_finalized ? " · finalized" : ""}
+              </p>
+              <div className="actions">
+                {layout.is_studio && !layout.in_use ? (
+                  <EditLink to={`/layouts/studio/${layout.id}`}>Edit Layout</EditLink>
+                ) : layout.is_studio && layout.in_use ? (
+                  <span className="muted">Locked</span>
+                ) : (
+                  <EditLink to={`/layouts/${layout.id}?tab=map`}>Map blocks</EditLink>
+                )}
+                <a className="btn-view" href={`/api/layouts/${layout.id}/blank-sheet.pdf`} target="_blank" rel="noreferrer">
+                  Print PDF
+                </a>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={async () => {
+                    setErr("");
+                    try {
+                      const copied = await api.post(`/api/layouts/${layout.id}/copy`) as Layout;
+                      setMsg(`Copied as “${copied.name}”.`);
+                      load();
+                    } catch (error) {
+                      setErr(error instanceof Error ? error.message : "Could not copy layout");
+                    }
+                  }}
+                >
+                  Copy
+                </button>
+                <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
+              </div>
+            </article>
+          ))}
         </div>
-        <label>Description<input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
-        <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} />
-        <p className="muted">Sample OMR (PDF or JPG) is required.</p>
-        <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/*" required />
-        <p><button type="submit">Create layout</button></p>
-        {msg && <p>{msg}</p>}
-        {err && <p className="error">{err}</p>}
-      </form>
-      <div className="layout-grid">
-        {rows.map((layout) => (
-          <div className="card layout-card" key={layout.id}>
-            <h3>{layout.name}</h3>
-            <p className="muted">{layout.description}</p>
-            <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
-            <ul>
-              {(layout.preview?.default_maps || []).map((m) => (
-                <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1})</li>
-              ))}
-            </ul>
-            {layout.has_sample ? (
-              <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
-            ) : (
-              <p className="muted">No sample image on file.</p>
-            )}
-            <div className="actions">
-              <ViewLink to={`/layouts/${layout.id}`}>View</ViewLink>
-              <EditLink to={`/layouts/${layout.id}?tab=edit`}>Edit</EditLink>
-              <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
-            </div>
-          </div>
-        ))}
       </div>
     </>
   );

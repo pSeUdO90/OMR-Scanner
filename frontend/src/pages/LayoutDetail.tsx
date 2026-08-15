@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, Layout, Subject } from "../api";
-import { EditButton, ViewButton } from "../components/ActionButtons";
+import { api, authFileUrl, Layout, Subject } from "../api";
+import { EditButton, EditLink, ViewButton } from "../components/ActionButtons";
+import BlockEditor from "../components/BlockEditor";
 import FieldMapper from "../components/FieldMapper";
+import SampleFieldOverlay from "../components/SampleFieldOverlay";
 import SubjectMapsEditor, { SubjectMapRow } from "../components/SubjectMapsEditor";
 import PageTitle from "../components/PageTitle";
 
@@ -83,8 +85,24 @@ export default function LayoutDetail() {
       <PageTitle icon="layouts">{layout.name}</PageTitle>
       <div className="tabs">
         <ViewButton className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</ViewButton>
-        <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
+        {layout.is_studio ? (
+          <EditLink to={`/layouts/studio/${layout.id}`}>Edit Layout</EditLink>
+        ) : (
+          <>
+            <ViewButton className={tab === "map" ? "active" : ""} onClick={() => setParams({ tab: "map" })}>Map blocks</ViewButton>
+            <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
+          </>
+        )}
       </div>
+      {tab === "map" && !layout.is_studio && (
+        <div className="card">
+          {layout.has_sample ? (
+            <BlockEditor layout={layout} onSaved={(next) => setLayout(next)} />
+          ) : (
+            <p className="muted">Upload a sample OMR on the Edit tab before mapping blocks.</p>
+          )}
+        </div>
+      )}
       {tab === "view" && (
         <>
           <div className="card">
@@ -92,6 +110,11 @@ export default function LayoutDetail() {
               <div>
                 <p className="muted">{layout.description}</p>
                 <p>{layout.total_questions} questions · options {layout.options}{layout.is_builtin ? " · built-in" : " · custom"}</p>
+                <p>
+                    <a href={`/api/layouts/${layout.id}/blank-sheet.pdf`} target="_blank" rel="noreferrer">Print PDF</a>
+                    {" · "}
+                    <a href={`/api/layouts/${layout.id}/blank-sheet`}>Download JPG</a>
+                  </p>
                 <ul>
                   {(layout.preview?.default_maps || []).map((m) => (
                     <li key={`${m.subject}-${m.start_q}`}>{m.subject}: Q{m.start_q}–Q{m.end_q} ({m.end_q - m.start_q + 1} questions)</li>
@@ -99,12 +122,21 @@ export default function LayoutDetail() {
                 </ul>
               </div>
               {layout.has_sample ? (
-                <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} sample`} />
+                layout.is_studio ? (
+                  <img className="sample-preview" src={authFileUrl(`/api/layouts/${layout.id}/sample`)} alt={`${layout.name} thumbnail`} />
+                ) : (
+                <SampleFieldOverlay
+                  src={authFileUrl(`/api/layouts/${layout.id}/sample`)}
+                  alt={`${layout.name} sample`}
+                  analysis={layout.analysis || []}
+                />
+                )
               ) : (
                 <p className="muted">No sample image on file.</p>
               )}
             </div>
           </div>
+          {!layout.is_studio && (
           <div className="card">
             <FieldMapper
               analysis={layout.analysis || []}
@@ -114,7 +146,11 @@ export default function LayoutDetail() {
                 load();
               }}
             />
+            {layout.has_sample && !(layout.blocks || []).length && (
+              <p className="muted">Open <strong>Map blocks</strong> and draw each data region on the sample. Automatic detection is not used for reading.</p>
+            )}
           </div>
+          )}
         </>
       )}
       {tab === "edit" && (

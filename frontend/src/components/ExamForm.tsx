@@ -149,38 +149,37 @@ export default function ExamForm({
     <form className="card exam-form" onSubmit={onSubmit}>
       {locked && <p className="error">This exam has been evaluated. Only the answer key can still be changed.</p>}
       <div className="form-section">
-        <h3>Exam details</h3>
+        <h3>Exam Details</h3>
         <div className="row">
           <label>Exam Name<input disabled={locked} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-          <label>Date<input disabled={locked} type="date" value={form.exam_date} onChange={(e) => setForm({ ...form, exam_date: e.target.value })} /></label>
-          <label>Type of Exam
+          <label className="exam-field-sm">Date<input disabled={locked} type="date" value={form.exam_date} onChange={(e) => setForm({ ...form, exam_date: e.target.value })} /></label>
+          <label className="exam-field-md">Type Of Exam
             <select disabled={locked} value={form.exam_type} onChange={(e) => setForm({ ...form, exam_type: e.target.value })}>
               {["Unit Test", "Term", "Annual", "NEET Mock", "JEE Mock", "Custom"].map((t) => <option key={t}>{t}</option>)}
             </select>
           </label>
-          <label>Duration (minutes)<input disabled={locked} type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></label>
+          <label className="exam-field-sm">Duration (Minutes)<input disabled={locked} type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} /></label>
         </div>
       </div>
+      <div className="exam-split-row">
       <div className="form-section">
         <h3>Assignment</h3>
         <div className="row">
-          <label>Test ID<input value={form.test_id || "0001"} disabled readOnly /></label>
-          <label>Test No<input disabled={locked} value={form.test_no} onChange={(e) => setForm({ ...form, test_no: e.target.value })} /></label>
-        </div>
-        <div className="row">
-          <label>Batch
+          <label className="exam-field-sm">Test ID<input value={form.test_id || "0001"} disabled readOnly /></label>
+          <label className="exam-field-sm">Test No<input disabled={locked} value={form.test_no} onChange={(e) => setForm({ ...form, test_no: e.target.value })} /></label>
+          <label className="exam-field-md">Batch
             <select disabled={locked} value={form.batch} onChange={(e) => setForm({ ...form, batch: e.target.value, class_name: "", section: "" })}>
-              <option value="">All batches</option>
+              <option value="">All Batches</option>
               {batches.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
-          <label>Class
+          <label className="exam-field-sm">Class
             <select disabled={locked} value={form.class_name} onChange={(e) => setForm({ ...form, class_name: e.target.value, section: "" })}>
-              <option value="">All classes</option>
+              <option value="">All Classes</option>
               {classes.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
-          <label>Section
+          <label className="exam-field-md">Section
             <SectionChecklist
               options={sections}
               value={form.section}
@@ -190,17 +189,18 @@ export default function ExamForm({
           </label>
         </div>
       </div>
-      <div className="form-section">
-        <h3>Marking scheme</h3>
-        <div className="row">
+      <div className="form-section exam-marking-section">
+        <h3>Marking Scheme</h3>
+        <div className="row exam-marking-row">
           <label>Correct<input disabled={locked} type="number" step="0.5" value={form.correct_marks} onChange={(e) => setForm({ ...form, correct_marks: Number(e.target.value) })} /></label>
           <label>Wrong<input disabled={locked} type="number" step="0.5" value={form.wrong_marks} onChange={(e) => setForm({ ...form, wrong_marks: Number(e.target.value) })} /></label>
-          <label>Left / unattempted<input disabled={locked} type="number" step="0.5" value={form.unattempted_marks} onChange={(e) => setForm({ ...form, unattempted_marks: Number(e.target.value) })} /></label>
+          <label>Left / Unattempted<input disabled={locked} type="number" step="0.5" value={form.unattempted_marks} onChange={(e) => setForm({ ...form, unattempted_marks: Number(e.target.value) })} /></label>
         </div>
       </div>
+      </div>
       <div className="form-section">
-        <h3>OMR layout</h3>
-        <div className="grid">
+        <h3>OMR Layout</h3>
+        <div className="layout-picks">
           {layouts.map((l) => (
             <button
               key={l.id}
@@ -216,11 +216,11 @@ export default function ExamForm({
             </button>
           ))}
         </div>
-        {layouts.length === 0 && <p className="muted">Create an OMR layout first, then return here to assign it to the exam.</p>}
-        {selectedLayout && <p className="muted">{selectedLayout.description}</p>}
+        {layouts.length === 0 && <p className="muted">Finalize An OMR Sheet In A4 OMR Studio, Then Return Here To Assign It.</p>}
+        {selectedLayout && <p className="muted exam-layout-note">{selectedLayout.description}</p>}
         <SubjectMapsEditor maps={maps} setMaps={setMaps} subjects={subjects} locked={locked} />
       </div>
-      {!locked && <p><button type="submit">{submitLabel}</button></p>}
+      {!locked && <p className="exam-form-actions"><button type="submit">{submitLabel}</button></p>}
       {err && <p className="error">{err}</p>}
     </form>
   );
