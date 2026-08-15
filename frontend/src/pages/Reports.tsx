@@ -11,8 +11,9 @@ export default function Reports() {
 
   useEffect(() => {
     api.get("/api/exams").then((rows: Exam[]) => {
-      setExams(rows);
-      const ready = rows.find((item) => item.status === "evaluated" || item.status === "published") || rows[0];
+      const listed = rows.filter((item) => item.name !== "Process OMR Exam");
+      setExams(listed);
+      const ready = listed.find((item) => item.status === "evaluated" || item.status === "published") || listed[0];
       if (ready) setExamId(ready.id);
     });
   }, []);

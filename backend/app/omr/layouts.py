@@ -259,13 +259,13 @@ BUILTIN_LAYOUTS: list[dict[str, Any]] = []
 RETIRED_LAYOUT_SLUGS = ("gyana-vikash-180", "standard-100", "jee-main-90")
 
 
-def layout_preview(layout: dict[str, Any]) -> dict[str, Any]:
+def layout_preview(layout: dict[str, Any], *, slug: str = "", total_questions: int = 0, options: str = "ABCD") -> dict[str, Any]:
     return {
-        "slug": layout["slug"],
-        "total_questions": layout["total_questions"],
-        "options": layout["options"],
+        "slug": layout.get("slug") or slug,
+        "total_questions": int(layout.get("total_questions") or total_questions or 0),
+        "options": layout.get("options") or options or "ABCD",
         "default_maps": layout.get("default_maps", []),
-        "roll_cols": layout.get("roll", {}).get("cols", 0),
+        "roll_cols": (layout.get("roll") or {}).get("cols", 0),
         "designed": bool(layout.get("designed")),
         "page": "A4",
     }

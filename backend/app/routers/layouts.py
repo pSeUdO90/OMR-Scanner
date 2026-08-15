@@ -48,7 +48,12 @@ def _sample_rev(path: str) -> int:
 def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> LayoutOut:
     config = json.loads(row.config_json)
     item = LayoutOut.model_validate(row)
-    item.preview = layout_preview(config)
+    item.preview = layout_preview(
+        config,
+        slug=row.slug,
+        total_questions=row.total_questions,
+        options=row.options,
+    )
     item.has_sample = bool(getattr(row, "sample_path", ""))
     item.is_studio = bool(config.get("studio"))
     item.is_finalized = bool(getattr(row, "is_finalized", True) or row.is_builtin)

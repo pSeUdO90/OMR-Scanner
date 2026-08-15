@@ -152,7 +152,7 @@ def test_process_omr_endpoint(tmp_path: Path):
     from conftest import TestClient
     from app.database import SessionLocal
     from app.main import app, _ensure_columns
-    from app.models import OmrLayout, Base
+    from app.models import Exam, OmrLayout, Base
     from app.database import engine
     from app.seed import seed_reference_data
 
@@ -214,4 +214,10 @@ def test_process_omr_endpoint(tmp_path: Path):
     exported = Path(body["results"][0]["exported_path"])
     assert exported.exists()
     assert "Process OMR Exam" in str(exported.parent)
+    client.delete(f"/api/exams/{exam_id}")
+    with SessionLocal() as db:
+        row = db.query(OmrLayout).filter(OmrLayout.slug == "process-omr-layout").one_or_none()
+        if row and db.query(Exam).filter(Exam.layout_id == row.id).first() is None:
+            db.delete(row)
+            db.commit()
 

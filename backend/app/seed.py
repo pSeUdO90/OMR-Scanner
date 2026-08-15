@@ -10,6 +10,16 @@ from .security import hash_password
 
 
 def seed_reference_data(db: Session) -> None:
+    leftover_exams = db.query(Exam).filter(Exam.name == "Process OMR Exam").all()
+    for exam in leftover_exams:
+        db.delete(exam)
+    if leftover_exams:
+        db.commit()
+    leftover_layout = db.query(OmrLayout).filter(OmrLayout.slug == "process-omr-layout").one_or_none()
+    if leftover_layout and db.query(Exam).filter(Exam.layout_id == leftover_layout.id).first() is None:
+        db.delete(leftover_layout)
+        db.commit()
+
     if db.query(Subject).count() == 0:
         for name, code in (
             ("Physics", "PHY"),

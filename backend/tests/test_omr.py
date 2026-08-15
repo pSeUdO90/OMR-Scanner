@@ -569,3 +569,35 @@ def test_studio_layout_reads_seven_digit_roll():
         assert found.roll_no == "2400101"
 
 
+def test_layouts_and_exams_list_when_studio_config_omits_slug():
+    client = TestClient(app)
+    with SessionLocal() as db:
+        row = OmrLayout(
+            slug="incomplete-studio-preview",
+            name="Incomplete Studio Preview",
+            description="",
+            total_questions=8,
+            options="ABCD",
+            config_json=json.dumps({"studio": True, "name": "Incomplete Studio Preview", "options": "ABCD", "questions": []}),
+            is_builtin=False,
+            is_finalized=True,
+        )
+        db.add(row)
+        db.commit()
+        layout_id = row.id
+    try:
+        listed = client.get("/api/layouts")
+        assert listed.status_code == 200, listed.text
+        assert any(item["id"] == layout_id for item in listed.json())
+        exams = client.get("/api/exams")
+        assert exams.status_code == 200, exams.text
+        names = {item["name"] for item in exams.json()}
+        assert "Process OMR Exam" not in names
+    finally:
+        with SessionLocal() as db:
+            leftover = db.get(OmrLayout, layout_id)
+            if leftover:
+                db.delete(leftover)
+                db.commit()
+
+
