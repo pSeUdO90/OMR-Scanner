@@ -38,6 +38,7 @@ class StudioLayoutIn(BaseModel):
     geometry: dict = Field(default_factory=dict)
     blocks: list[dict] = Field(default_factory=list)
     mapping: dict = Field(default_factory=dict)
+    thumbnail_base64: str = ""
 
 
 class LayoutDesignIn(BaseModel):
@@ -65,6 +66,10 @@ class LayoutOut(BaseModel):
     blocks: list[dict] = Field(default_factory=list)
     analysis: list[dict] = Field(default_factory=list)
     preview: dict | None = None
+    is_studio: bool = False
+    studio_config: dict = Field(default_factory=dict)
+    studio_geometry: dict = Field(default_factory=dict)
+    studio_blocks: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

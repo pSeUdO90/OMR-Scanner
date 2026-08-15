@@ -64,3 +64,8 @@ def test_omr_studio_export_schema_strings():
     canvas = (ROOT / "OmrCanvas.tsx").read_text()
     assert "onPointerDown" in canvas
     assert "onMove" in canvas
+    layouts = (ROOT.parent / "pages" / "Layouts.tsx").read_text()
+    assert "Edit Layout" in layouts
+    assert "layout-thumb" in layouts
+    assert "Design A4 OMR sheet" not in layouts
+    assert "captureSheetThumbnail" in (ROOT / "thumbnail.ts").read_text()

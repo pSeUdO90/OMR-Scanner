@@ -392,7 +392,15 @@ th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }
-.layout-card img.sample-preview { width: 100%; height: 180px; object-fit: cover; }
+.layout-thumb {
+  width: 64px;
+  height: 90px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: block;
+}
 .layout-card .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.6rem; }
 .field-map { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0.4rem 0.8rem; align-items: center; }
 .key-item {

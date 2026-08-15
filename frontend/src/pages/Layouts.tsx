@@ -82,16 +82,12 @@ export default function Layouts() {
 
   return (
     <>
-      <PageTitle icon="layouts" subtitle="Design an A4 sheet with predefined blocks, or create a layout from a printed sample.">
+      <PageTitle icon="layouts" subtitle="Create a sheet in A4 OMR Studio, or map a printed sample. Saved studio sheets appear below with a thumbnail.">
         OMR layouts
       </PageTitle>
       <p className="card">
         <Link className="btn-view" to="/layouts/studio">Open A4 OMR Studio</Link>
-        <span className="muted"> 6.5 mm grid, 4.5 mm bubbles, print sheet, and mapping JSON.</span>
-      </p>
-      <p className="card">
-        <Link className="btn-view" to="/layouts/design">Design A4 OMR sheet</Link>
-        <span className="muted"> Place Roll, Name, Date, Test, and answer columns on a blank A4 page.</span>
+        <span className="muted"> Design, print, export JSON, and save to this list.</span>
       </p>
       <form className="card" onSubmit={onCreate}>
         <h3>Create a new layout</h3>
@@ -138,6 +134,7 @@ export default function Layouts() {
                 indeterminate={rows.some((r) => selected.has(r.id))}
                 onChange={(on) => setSelected(setAll(rows.map((r) => r.id), on))}
               />
+              <th></th>
               <th>Name</th><th>Questions</th><th>Options</th><th>Type</th><th></th>
             </tr>
           </thead>
@@ -145,14 +142,24 @@ export default function Layouts() {
             {rows.map((layout) => (
               <tr key={layout.id}>
                 <SelectCell checked={selected.has(layout.id)} onChange={(on) => setSelected(toggleId(selected, layout.id, on))} label={`Select ${layout.name}`} />
+                <td>
+                  {layout.has_sample ? (
+                    <img className="layout-thumb" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} thumbnail`} />
+                  ) : (
+                    <span className="muted">No preview</span>
+                  )}
+                </td>
                 <td>{layout.name}</td>
                 <td>{layout.total_questions}</td>
                 <td>{layout.options}</td>
-                <td>{layout.is_builtin ? "built-in" : "custom"}</td>
+                <td>{layout.is_studio ? "OMR Studio" : layout.is_builtin ? "built-in" : "custom"}</td>
                 <td className="row-actions">
                   <ViewLink to={`/layouts/${layout.id}`}>View</ViewLink>
-                  <EditLink to={`/layouts/${layout.id}?tab=map`}>Map blocks</EditLink>
-                  <EditLink to={`/layouts/${layout.id}?tab=edit`}>Edit</EditLink>
+                  {layout.is_studio ? (
+                    <EditLink to={`/layouts/studio/${layout.id}`}>Edit Layout</EditLink>
+                  ) : (
+                    <EditLink to={`/layouts/${layout.id}?tab=map`}>Map blocks</EditLink>
+                  )}
                   <DeleteButton onClick={() => onDelete(layout)}>Delete</DeleteButton>
                 </td>
               </tr>

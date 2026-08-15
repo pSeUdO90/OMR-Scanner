@@ -66,7 +66,11 @@ export type Layout = {
   total_questions: number;
   options: string;
   is_builtin?: boolean;
+  is_studio?: boolean;
   has_sample?: boolean;
+  studio_config?: Record<string, unknown>;
+  studio_geometry?: Record<string, unknown>;
+  studio_blocks?: unknown[];
   field_map?: Record<string, string>;
   blocks?: DataBlock[];
   analysis?: AnalysisField[];

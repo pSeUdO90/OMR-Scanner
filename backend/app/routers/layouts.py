@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 from io import BytesIO
@@ -33,15 +34,21 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
     item = LayoutOut.model_validate(row)
     item.preview = layout_preview(config)
     item.has_sample = bool(getattr(row, "sample_path", ""))
+    item.is_studio = bool(config.get("studio"))
+    item.studio_config = config.get("studio_config") or {}
+    item.studio_geometry = config.get("studio_geometry") or {}
+    item.studio_blocks = config.get("studio_blocks") or []
     item.field_map = json.loads(getattr(row, "field_map_json", None) or "{}")
-    item.blocks = config.get("blocks") or []
+    item.blocks = [] if item.is_studio else (config.get("blocks") or [])
     img = image
     if img is None and with_image and item.has_sample and Path(row.sample_path).exists():
         try:
             img = load_image(row.sample_path)
         except Exception:
             img = None
-    if item.blocks:
+    if item.is_studio:
+        item.analysis = []
+    elif item.blocks:
         item.analysis = analysis_from_blocks(config, img)
     else:
         item.analysis = analyze_layout_config(config, None)
@@ -88,9 +95,25 @@ def get_predefined_blocks(total_questions: int = 100, columns: int = 4, options:
     }
 
 
-@router.post("/studio", response_model=LayoutOut)
-def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
-    slug = _unique_slug(db, payload.name)
+def _write_thumbnail(slug: str, data_url: str) -> str | None:
+    raw = data_url.strip()
+    if not raw:
+        return None
+    if "," in raw:
+        raw = raw.split(",", 1)[1]
+    try:
+        blob = base64.b64decode(raw)
+        image = Image.open(BytesIO(blob)).convert("RGB")
+    except Exception:
+        return None
+    dest_dir = UPLOAD_DIR / "layouts"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stored = dest_dir / f"{slug}-studio-{uuid4().hex[:8]}.jpg"
+    image.save(stored, "JPEG", quality=86)
+    return str(stored)
+
+
+def _studio_config(payload: StudioLayoutIn, slug: str) -> dict:
     options = "".join(ch for ch in payload.options.upper() if ch in "ABCDEF") or "ABCD"
     columns = max(1, min(6, int((payload.config or {}).get("questionColumns") or 4)))
     roll_cols = max(4, min(12, int((payload.config or {}).get("rollCols") or 8)))
@@ -110,7 +133,15 @@ def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
     config["studio_geometry"] = payload.geometry
     config["studio_blocks"] = payload.blocks
     config["studio_mapping"] = payload.mapping
-    sample_path = _write_designed_sample(slug, config)
+    config["blocks"] = []
+    return config
+
+
+@router.post("/studio", response_model=LayoutOut)
+def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
+    slug = _unique_slug(db, payload.name)
+    config = _studio_config(payload, slug)
+    sample_path = _write_thumbnail(slug, payload.thumbnail_base64) or _write_designed_sample(slug, config)
     row = OmrLayout(
         slug=slug,
         name=payload.name,
@@ -125,7 +156,28 @@ def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _layout_out(row, with_image=True)
+    return _layout_out(row)
+
+
+@router.put("/{layout_id}/studio", response_model=LayoutOut)
+def update_studio_layout(layout_id: int, payload: StudioLayoutIn, db: Session = Depends(get_db)):
+    row = db.get(OmrLayout, layout_id)
+    if not row:
+        raise HTTPException(404, "Layout not found")
+    if row.is_builtin:
+        raise HTTPException(400, "Built-in layouts cannot be edited")
+    config = _studio_config(payload, row.slug)
+    thumb = _write_thumbnail(row.slug, payload.thumbnail_base64)
+    if thumb:
+        row.sample_path = thumb
+    row.name = payload.name
+    row.description = payload.description or config["description"]
+    row.total_questions = config["total_questions"]
+    row.options = config["options"]
+    row.config_json = json.dumps(config)
+    db.commit()
+    db.refresh(row)
+    return _layout_out(row)
 
 
 @router.post("/design", response_model=LayoutOut)

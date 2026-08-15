@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
+import base64
+import json
 
 from app.database import Base, engine, SessionLocal
 from app.main import app, _ensure_columns
@@ -9,7 +12,6 @@ from app.omr.generator import generate_sheet
 from app.omr.layouts import gyana_vikash_180
 from app.omr.processor import evaluate_image, load_image, save_image
 from app.seed import seed_reference_data
-import json
 
 
 def setup_module():
@@ -400,6 +402,11 @@ def test_student_import_and_exam_flow(tmp_path):
 
 
 def test_studio_layout_saves_mapping_json():
+    from io import BytesIO
+
+    buf = BytesIO()
+    Image.new("RGB", (42, 60), "#ffffff").save(buf, "JPEG")
+    thumb = base64.b64encode(buf.getvalue()).decode("ascii")
     client = TestClient(app)
     payload = {
         "name": "Studio Save Test",
@@ -410,17 +417,31 @@ def test_studio_layout_saves_mapping_json():
         "geometry": {"pageWidthMm": 210, "pageHeightMm": 297, "cellMm": 6.5, "gridCols": 32, "gridRows": 45, "bubbleDiameterMm": 4.5},
         "blocks": [{"id": "mcq-1", "blockId": "mcq_column_1", "dbColumnBinding": "student_responses.q_01_to_40", "blockType": "GRID_MCQ"}],
         "mapping": {"documentMetadata": {"pageSize": {"widthMm": 210, "heightMm": 297}}, "dataBlocks": []},
+        "thumbnail_base64": thumb,
     }
     created = client.post("/api/layouts/studio", json=payload)
     assert created.status_code == 200, created.text
     row = created.json()
     assert row["name"] == "Studio Save Test"
     assert row["total_questions"] == 40
+    assert row["is_studio"] is True
+    assert row["has_sample"] is True
+    assert row["blocks"] == []
+    listed = client.get("/api/layouts").json()
+    assert any(item["id"] == row["id"] and item["is_studio"] and item["has_sample"] for item in listed)
+    sample = client.get(f"/api/layouts/{row['id']}/sample")
+    assert sample.status_code == 200
     stored = SessionLocal().query(OmrLayout).filter(OmrLayout.id == row["id"]).one()
     config = json.loads(stored.config_json)
     assert config["studio"] is True
     assert config["studio_mapping"]["documentMetadata"]["pageSize"]["widthMm"] == 210
     assert config["studio_blocks"][0]["blockId"] == "mcq_column_1"
     assert config["studio_config"]["questionColumns"] == 5
+    updated = client.put(
+        f"/api/layouts/{row['id']}/studio",
+        json={**payload, "name": "Studio Save Test Edited", "thumbnail_base64": thumb},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "Studio Save Test Edited"
     assert client.delete(f"/api/layouts/{row['id']}").status_code == 200
 

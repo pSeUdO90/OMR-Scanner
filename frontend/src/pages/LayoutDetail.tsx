@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, Layout, Subject } from "../api";
-import { EditButton, ViewButton } from "../components/ActionButtons";
+import { EditButton, EditLink, ViewButton } from "../components/ActionButtons";
 import BlockEditor from "../components/BlockEditor";
 import FieldMapper from "../components/FieldMapper";
 import SampleFieldOverlay from "../components/SampleFieldOverlay";
@@ -85,10 +85,16 @@ export default function LayoutDetail() {
       <PageTitle icon="layouts">{layout.name}</PageTitle>
       <div className="tabs">
         <ViewButton className={tab === "view" ? "active" : ""} onClick={() => setParams({ tab: "view" })}>View</ViewButton>
-        <ViewButton className={tab === "map" ? "active" : ""} onClick={() => setParams({ tab: "map" })}>Map blocks</ViewButton>
-        <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
+        {layout.is_studio ? (
+          <EditLink to={`/layouts/studio/${layout.id}`}>Edit Layout</EditLink>
+        ) : (
+          <>
+            <ViewButton className={tab === "map" ? "active" : ""} onClick={() => setParams({ tab: "map" })}>Map blocks</ViewButton>
+            <EditButton className={tab === "edit" ? "active" : ""} onClick={() => setParams({ tab: "edit" })}>Edit</EditButton>
+          </>
+        )}
       </div>
-      {tab === "map" && (
+      {tab === "map" && !layout.is_studio && (
         <div className="card">
           {layout.has_sample ? (
             <BlockEditor layout={layout} onSaved={(next) => setLayout(next)} />
@@ -118,16 +124,21 @@ export default function LayoutDetail() {
                 </ul>
               </div>
               {layout.has_sample ? (
+                layout.is_studio ? (
+                  <img className="sample-preview" src={`/api/layouts/${layout.id}/sample`} alt={`${layout.name} thumbnail`} />
+                ) : (
                 <SampleFieldOverlay
                   src={`/api/layouts/${layout.id}/sample`}
                   alt={`${layout.name} sample`}
                   analysis={layout.analysis || []}
                 />
+                )
               ) : (
                 <p className="muted">No sample image on file.</p>
               )}
             </div>
           </div>
+          {!layout.is_studio && (
           <div className="card">
             <FieldMapper
               analysis={layout.analysis || []}
@@ -141,6 +152,7 @@ export default function LayoutDetail() {
               <p className="muted">Open <strong>Map blocks</strong> and draw each data region on the sample. Automatic detection is not used for reading.</p>
             )}
           </div>
+          )}
         </>
       )}
       {tab === "edit" && (

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { api } from "../api";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api, Layout } from "../api";
 import { useConfirm } from "../components/ConfirmProvider";
 import OmrCanvas from "../omrStudio/OmrCanvas";
 import { mappingFromDom, mappingFromGeometry } from "../omrStudio/exportMapping";
-import { cloneGeometry, DEFAULT_GEOMETRY, type SheetGeometry } from "../omrStudio/geometry";
+import { cloneGeometry, type SheetGeometry } from "../omrStudio/geometry";
 import {
   StudioBlock,
   addDigitBlock,
@@ -13,6 +13,7 @@ import {
   StudioConfig,
 } from "../omrStudio/layoutEngine";
 import { qualitySummary, runQualityCheck } from "../omrStudio/qualityCheck";
+import { captureSheetThumbnail } from "../omrStudio/thumbnail";
 
 function Field({
   label,
@@ -30,8 +31,11 @@ function Field({
 }
 
 export default function OmrStudio() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
+  const [layoutId, setLayoutId] = useState<number | null>(id ? Number(id) : null);
   const [config, setConfig] = useState<StudioConfig>(defaultConfig());
   const [geometry, setGeometry] = useState<SheetGeometry>(() => cloneGeometry());
   const [blocks, setBlocks] = useState<StudioBlock[]>(() => buildDefaultBlocks(defaultConfig()));
@@ -48,6 +52,30 @@ export default function OmrStudio() {
     document.documentElement.classList.add("omr-studio-active");
     return () => document.documentElement.classList.remove("omr-studio-active");
   }, []);
+
+  useEffect(() => {
+    if (!id) {
+      setLayoutId(null);
+      return;
+    }
+    api.get(`/api/layouts/${id}`).then((row) => {
+      const layout = row as Layout;
+      if (!layout.is_studio) {
+        setErr("This layout was not created in OMR Studio.");
+        return;
+      }
+      setLayoutId(layout.id);
+      const nextConfig = { ...defaultConfig(), ...(layout.studio_config || {}) } as StudioConfig;
+      const nextGeo = { ...cloneGeometry(), ...(layout.studio_geometry || {}) } as SheetGeometry;
+      const nextBlocks = (layout.studio_blocks || []) as StudioBlock[];
+      setConfig(nextConfig);
+      setGeometry(nextGeo);
+      setBlocks(nextBlocks.length ? nextBlocks : buildDefaultBlocks(nextConfig, nextGeo));
+      setSelectedId(null);
+    }).catch((error) => {
+      setErr(error instanceof Error ? error.message : "Could not load layout");
+    });
+  }, [id]);
 
   useEffect(() => {
     setDraft(selected ? { ...selected } : null);
@@ -91,6 +119,8 @@ export default function OmrStudio() {
   const saveLayout = async () => {
     setErr("");
     try {
+      const svg = pageRef.current?.querySelector("[data-omr-page='a4']") as SVGSVGElement | null;
+      const thumbnail_base64 = svg ? await captureSheetThumbnail(svg) : "";
       const payload = {
         name: config.title,
         description: "A4 OMR Studio layout",
@@ -100,9 +130,16 @@ export default function OmrStudio() {
         geometry,
         blocks,
         mapping: currentMapping(),
+        thumbnail_base64,
       };
-      const created = await api.post("/api/layouts/studio", payload) as { name: string };
-      setMsg(`Saved “${created.name}” to the database.`);
+      const saved = (
+        layoutId
+          ? await api.put(`/api/layouts/${layoutId}/studio`, payload)
+          : await api.post("/api/layouts/studio", payload)
+      ) as Layout;
+      setLayoutId(saved.id);
+      setMsg(`Saved “${saved.name}” to Saved layouts.`);
+      navigate("/layouts");
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not save layout");
     }

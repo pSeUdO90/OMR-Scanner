@@ -5,7 +5,6 @@ import Students from "./pages/Students";
 import StudentView from "./pages/StudentView";
 import Subjects from "./pages/Subjects";
 import Layouts from "./pages/Layouts";
-import LayoutDesign from "./pages/LayoutDesign";
 import OmrStudio from "./pages/OmrStudio";
 import LayoutDetail from "./pages/LayoutDetail";
 import Exams from "./pages/Exams";
@@ -37,8 +36,8 @@ export default function App() {
           <Route path="/students/:id" element={<StudentView />} />
           <Route path="/subjects" element={<Subjects />} />
           <Route path="/layouts" element={<Layouts />} />
+          <Route path="/layouts/studio/:id" element={<OmrStudio />} />
           <Route path="/layouts/studio" element={<OmrStudio />} />
-          <Route path="/layouts/design" element={<LayoutDesign />} />
           <Route path="/layouts/:id" element={<LayoutDetail />} />
           <Route path="/exams" element={<Exams />} />
           <Route path="/exams/:id" element={<ExamDetail />} />
