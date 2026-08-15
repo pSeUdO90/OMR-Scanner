@@ -19,7 +19,7 @@ export type MappingTarget = {
 export type MappingBlock = {
   blockId: string;
   dbColumnBinding: string;
-  blockType: "GRID_DIGIT" | "GRID_MCQ";
+  blockType: "GRID_MCQ" | "GRID_DIGIT" | "GRID_DATE" | "GRID_NAME";
   dimensions: { rows: number; cols: number; isColumnMajor: boolean };
   boundsRelative: { xPct: number; yPct: number; widthPct: number; heightPct: number };
   targets: MappingTarget[];
@@ -44,6 +44,24 @@ export function blockBoundsMm(block: StudioBlock, g: SheetGeometry = DEFAULT_GEO
   };
 }
 
+export function nameTargets(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOMETRY): MappingTarget[] {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const targets: MappingTarget[] = [];
+  let targetId = 1;
+  for (let col = 0; col < block.cols; col++) {
+    for (let row = 0; row < block.rows; row++) {
+      const center = cellCenter(block.col0 + col, block.row0 + row, g);
+      targets.push({
+        targetId: targetId++,
+        gridPosition: { row: row + 1, col: col + 1 },
+        value: letters[row % 26],
+        centerRelative: mmToPct(center.xMm, center.yMm, g),
+      });
+    }
+  }
+  return targets;
+}
+
 export function digitTargets(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOMETRY): MappingTarget[] {
   const targets: MappingTarget[] = [];
   let targetId = 1;
@@ -63,9 +81,12 @@ export function digitTargets(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOM
 
 export function mcqTargets(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOMETRY): MappingTarget[] {
   const options = block.options || "ABCD";
+  const startQ = block.startQ || 1;
+  const endQ = block.endQ || startQ + block.rows - 1;
+  const rowCount = Math.min(block.rows, Math.max(1, endQ - startQ + 1));
   const targets: MappingTarget[] = [];
   let targetId = 1;
-  for (let r = 0; r < block.rows; r++) {
+  for (let r = 0; r < rowCount; r++) {
     for (let c = 0; c < options.length; c++) {
       const center = cellCenter(block.col0 + 1 + c, block.row0 + r, g);
       targets.push({
@@ -85,15 +106,15 @@ export function mappingFromGeometry(blocks: StudioBlock[], g: SheetGeometry = DE
     const bounds = blockBoundsMm(block, g);
     const size = sizeToPct(bounds.widthMm, bounds.heightMm, g);
     const origin = mmToPct(bounds.xMm, bounds.yMm, g);
-    const isDigit = block.blockType === "GRID_DIGIT";
+    const isMcq = block.blockType === "GRID_MCQ";
     return {
       blockId: block.blockId,
       dbColumnBinding: block.dbColumnBinding,
       blockType: block.blockType,
       dimensions: {
         rows: block.rows,
-        cols: isDigit ? block.cols : (block.options || "ABCD").length,
-        isColumnMajor: isDigit,
+        cols: isMcq ? (block.options || "ABCD").length : block.cols,
+        isColumnMajor: !isMcq,
       },
       boundsRelative: {
         xPct: origin.xPct,
@@ -101,7 +122,12 @@ export function mappingFromGeometry(blocks: StudioBlock[], g: SheetGeometry = DE
         widthPct: size.widthPct,
         heightPct: size.heightPct,
       },
-      targets: isDigit ? digitTargets(block, g) : mcqTargets(block, g),
+      targets:
+        block.blockType === "GRID_MCQ"
+          ? mcqTargets(block, g)
+          : block.blockType === "GRID_NAME"
+            ? nameTargets(block, g)
+            : digitTargets(block, g),
     };
   });
   return {

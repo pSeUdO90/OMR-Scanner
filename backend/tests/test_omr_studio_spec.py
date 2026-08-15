@@ -45,6 +45,8 @@ def test_omr_studio_export_schema_strings():
         "blockType",
         "GRID_DIGIT",
         "GRID_MCQ",
+        "GRID_DATE",
+        "GRID_NAME",
         "isColumnMajor",
         "boundsRelative",
         "centerRelative",
@@ -56,6 +58,10 @@ def test_omr_studio_export_schema_strings():
     assert "candidates.roll_number" in engine
     assert "Math.min(6," in engine
     assert "clampBlockOrigin" in engine
+    assert "GRID_DATE" in engine
+    assert "GRID_NAME" in engine
+    assert "applyBlockType" in engine
+    assert "applyMcqRange" in engine
     studio = (ROOT.parent / "pages" / "OmrStudio.tsx").read_text()
     assert "[1, 2, 3, 4, 5, 6]" in studio
     assert "Export JSON" in studio
@@ -68,6 +74,8 @@ def test_omr_studio_export_schema_strings():
     assert "Corner Markers" in studio
     assert 'legend>Timing tracks</legend>' not in studio
     assert "omr-blocks-table" in studio
+    assert "End Q" in studio
+    assert "BLOCK_TYPES" in studio
     canvas = (ROOT / "OmrCanvas.tsx").read_text()
     assert "onPointerDown" in canvas
     assert "onMove" in canvas

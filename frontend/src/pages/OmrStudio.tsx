@@ -8,7 +8,10 @@ import { mappingFromDom, mappingFromGeometry } from "../omrStudio/exportMapping"
 import { cloneGeometry, type SheetGeometry } from "../omrStudio/geometry";
 import {
   StudioBlock,
+  BLOCK_TYPES,
   addDigitBlock,
+  applyBlockType,
+  applyMcqRange,
   buildDefaultBlocks,
   defaultConfig,
   StudioConfig,
@@ -175,7 +178,26 @@ export default function OmrStudio() {
 
   const patchBlock = (id: string, patch: Partial<StudioBlock>) => {
     if (inUse) return;
-    setBlocks((current) => current.map((block) => (block.id === id ? { ...block, ...patch } : block)));
+    setBlocks((current) =>
+      current.map((block) => {
+        if (block.id !== id) return block;
+        let next = { ...block, ...patch };
+        if (patch.blockType && patch.blockType !== block.blockType) {
+          next = applyBlockType(block, patch.blockType);
+        } else if (next.blockType === "GRID_MCQ") {
+          if (patch.startQ != null || patch.endQ != null) {
+            next = applyMcqRange(next, next.startQ || 1, next.endQ || next.startQ || 1);
+          } else if (patch.rows != null) {
+            const start = Math.max(1, next.startQ || 1);
+            next = applyMcqRange(next, start, start + Math.max(1, next.rows) - 1);
+          } else if (patch.options != null) {
+            const options = String(next.options || "ABCD").replace(/[^A-F]/gi, "").toUpperCase() || "ABCD";
+            next = { ...next, options, cols: 1 + options.length };
+          }
+        }
+        return next;
+      }),
+    );
   };
 
   const deleteBlock = async (block: StudioBlock) => {
@@ -402,6 +424,7 @@ export default function OmrStudio() {
                   <th>Width</th>
                   <th>Height</th>
                   <th>Start Q</th>
+                  <th>End Q</th>
                   <th>Options</th>
                   <th></th>
                 </tr>
@@ -419,7 +442,17 @@ export default function OmrStudio() {
                     <td>
                       <input disabled={inUse} value={block.blockId} onChange={(e) => patchBlock(block.id, { blockId: e.target.value })} />
                     </td>
-                    <td>{block.blockType}</td>
+                    <td>
+                      <select
+                        disabled={inUse}
+                        value={block.blockType}
+                        onChange={(e) => patchBlock(block.id, { blockType: e.target.value as StudioBlock["blockType"] })}
+                      >
+                        {BLOCK_TYPES.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       <input disabled={inUse} value={block.dbColumnBinding} onChange={(e) => patchBlock(block.id, { dbColumnBinding: e.target.value })} />
                     </td>
@@ -437,7 +470,12 @@ export default function OmrStudio() {
                     </td>
                     <td>
                       {block.blockType === "GRID_MCQ" ? (
-                        <input disabled={inUse} type="number" value={block.startQ || 1} onChange={(e) => patchBlock(block.id, { startQ: Number(e.target.value) })} />
+                        <input disabled={inUse} type="number" min={1} value={block.startQ || 1} onChange={(e) => patchBlock(block.id, { startQ: Number(e.target.value) })} />
+                      ) : "—"}
+                    </td>
+                    <td>
+                      {block.blockType === "GRID_MCQ" ? (
+                        <input disabled={inUse} type="number" min={1} value={block.endQ || (block.startQ || 1) + block.rows - 1} onChange={(e) => patchBlock(block.id, { endQ: Number(e.target.value) })} />
                       ) : "—"}
                     </td>
                     <td>

@@ -1,6 +1,8 @@
 import { CONTENT_COL0, CONTENT_COL1, CONTENT_ROW0, CONTENT_ROW1, type SheetGeometry, DEFAULT_GEOMETRY } from "./geometry";
 
-export type BlockType = "GRID_DIGIT" | "GRID_MCQ";
+export type BlockType = "GRID_MCQ" | "GRID_DIGIT" | "GRID_DATE" | "GRID_NAME";
+
+export const BLOCK_TYPES: BlockType[] = ["GRID_MCQ", "GRID_DIGIT", "GRID_DATE", "GRID_NAME"];
 
 export type StudioBlock = {
   id: string;
@@ -138,6 +140,40 @@ export function buildDefaultBlocks(config: StudioConfig, g: SheetGeometry = DEFA
     if (q > questionCount) break;
   }
   return blocks;
+}
+
+export function isDigitLike(blockType: BlockType) {
+  return blockType === "GRID_DIGIT" || blockType === "GRID_DATE" || blockType === "GRID_NAME";
+}
+
+export function applyBlockType(block: StudioBlock, blockType: BlockType): StudioBlock {
+  if (blockType === "GRID_MCQ") {
+    const startQ = Math.max(1, Math.round(Number(block.startQ) || 1));
+    const endQ = Math.max(startQ, Math.round(Number(block.endQ) || startQ + Math.max(0, block.rows - 1)));
+    const options = (block.options || "ABCD").replace(/[^A-F]/gi, "").toUpperCase() || "ABCD";
+    return {
+      ...block,
+      blockType,
+      startQ,
+      endQ,
+      options,
+      rows: endQ - startQ + 1,
+      cols: Math.max(2, 1 + options.length),
+    };
+  }
+  if (blockType === "GRID_DATE") {
+    return { ...block, blockType, rows: 10, cols: block.cols >= 6 ? block.cols : 8 };
+  }
+  if (blockType === "GRID_NAME") {
+    return { ...block, blockType, rows: block.rows >= 26 ? block.rows : 26, cols: Math.max(1, block.cols) };
+  }
+  return { ...block, blockType, rows: block.rows >= 10 ? Math.min(block.rows, 10) : 10 };
+}
+
+export function applyMcqRange(block: StudioBlock, startQ: number, endQ: number): StudioBlock {
+  const start = Math.max(1, Math.round(startQ) || 1);
+  const end = Math.max(start, Math.round(endQ) || start);
+  return { ...block, startQ: start, endQ: end, rows: end - start + 1 };
 }
 
 export function addDigitBlock(blocks: StudioBlock[], label = "Custom ID", g: SheetGeometry = DEFAULT_GEOMETRY): StudioBlock[] {

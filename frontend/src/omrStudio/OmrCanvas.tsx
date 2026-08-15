@@ -182,10 +182,12 @@ export default function OmrCanvas({
           >
             {block.label}
           </text>
-          {block.blockType === "GRID_DIGIT" ? (
-            <DigitBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
-          ) : (
+          {block.blockType === "GRID_MCQ" ? (
             <McqBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+          ) : block.blockType === "GRID_NAME" ? (
+            <NameBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+          ) : (
+            <DigitBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
           )}
         </g>
       ))}
@@ -204,13 +206,15 @@ function DigitBubbles({
   radius: number;
   geometry: SheetGeometry;
 }) {
+  const dateHeaders = ["D", "D", "M", "M", "Y", "Y", "Y", "Y"];
   const nodes = [];
   let targetId = 1;
   for (let col = 0; col < block.cols; col++) {
     const header = cellCenter(block.col0 + col, block.row0, g);
+    const caption = block.blockType === "GRID_DATE" && col < dateHeaders.length ? dateHeaders[col] : String(col + 1);
     nodes.push(
       <text key={`h-${col}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
-        {col + 1}
+        {caption}
       </text>
     );
     for (let row = 0; row < block.rows; row++) {
@@ -221,6 +225,46 @@ function DigitBubbles({
           {col === 0 && (
             <text x={center.xMm - g.cellMm * 0.72} y={center.yMm + 0.7} fontSize="1.7" fill="#000">
               {row % 10}
+            </text>
+          )}
+          <circle cx={center.xMm} cy={center.yMm} r={radius} fill="none" stroke="#000000" strokeWidth={stroke} />
+        </g>
+      );
+    }
+  }
+  return <>{nodes}</>;
+}
+
+function NameBubbles({
+  block,
+  stroke,
+  radius,
+  geometry: g,
+}: {
+  block: StudioBlock;
+  stroke: number;
+  radius: number;
+  geometry: SheetGeometry;
+}) {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const nodes = [];
+  let targetId = 1;
+  for (let col = 0; col < block.cols; col++) {
+    const header = cellCenter(block.col0 + col, block.row0, g);
+    nodes.push(
+      <text key={`nh-${col}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
+        {col + 1}
+      </text>
+    );
+    for (let row = 0; row < block.rows; row++) {
+      const letter = letters[row % 26];
+      const center = cellCenter(block.col0 + col, block.row0 + row, g);
+      const id = targetId++;
+      nodes.push(
+        <g key={`n-${col}-${row}`} data-target-id={id}>
+          {col === 0 && (
+            <text x={center.xMm - g.cellMm * 0.72} y={center.yMm + 0.7} fontSize="1.7" fill="#000">
+              {letter}
             </text>
           )}
           <circle cx={center.xMm} cy={center.yMm} r={radius} fill="none" stroke="#000000" strokeWidth={stroke} />
@@ -244,6 +288,9 @@ function McqBubbles({
 }) {
   const options = block.options || "ABCD";
   const startQ = block.startQ || 1;
+  const endQ = block.endQ || startQ + block.rows - 1;
+  const questionCount = Math.max(1, endQ - startQ + 1);
+  const rowCount = Math.min(block.rows, questionCount);
   const nodes = [];
   let targetId = 1;
   for (let c = 0; c < options.length; c++) {
@@ -254,7 +301,7 @@ function McqBubbles({
       </text>
     );
   }
-  for (let r = 0; r < block.rows; r++) {
+  for (let r = 0; r < rowCount; r++) {
     const label = cellCenter(block.col0, block.row0 + r, g);
     nodes.push(
       <text key={`q-${r}`} x={label.xMm} y={label.yMm + 0.7} textAnchor="middle" fontSize="1.7" fill="#000">
