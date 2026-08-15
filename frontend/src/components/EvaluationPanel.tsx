@@ -95,7 +95,8 @@ export default function EvaluationPanel({
     return [{ title: "All questions", questions: Array.from({ length: total }, (_, i) => i + 1) }];
   }, [exam.subject_maps, total]);
 
-  const filled = Object.keys(answers).filter((k) => answers[k]).length;
+  const filled = Array.from({ length: total }, (_, i) => answers[String(i + 1)]).filter((letter) => letter && "ABCD".includes(letter)).length;
+  const keyComplete = total > 0 && filled === total;
   const matched = sheets.filter((s) => s.status !== "unmatched");
   const unmatched = sheets.filter((s) => s.status === "unmatched");
 
@@ -114,6 +115,21 @@ export default function EvaluationPanel({
 
   const saveKey = async () => persistKey(answers);
 
+  const exportKey = () => {
+    const rows = ["question,answer"];
+    for (let q = 1; q <= total; q += 1) {
+      rows.push(`${q},${answers[String(q)] || ""}`);
+    }
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(exam.name || "exam").replace(/\s+/g, "-").toLowerCase()}-answer-key.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMsg("Answer Key Exported.");
+  };
+
   const selectOption = (question: number, letter: string) => {
     const next = { ...answers, [String(question)]: letter };
     setAnswers(next);
@@ -129,10 +145,13 @@ export default function EvaluationPanel({
     <>
       <details className="card answer-key-card">
         <summary className="answer-key-toolbar">
-          <span className="answer-key-toggle" aria-hidden="true" />
-          <div>
-            <h3>Answer Key</h3>
-            <p className="muted">Tap A–D For Each Question. Sheets Re-Evaluate When The Key Is Saved. {filled}/{total} Marked.</p>
+          <div className="answer-key-heading">
+            <span className="answer-key-toggle" aria-hidden="true" />
+            <div>
+              <h3>Answer Key</h3>
+              <p className="answer-key-marked">{filled}/{total} Marked.</p>
+              <p className="muted">Tap A–D For Each Question. Sheets Re-Evaluate When The Key Is Saved.</p>
+            </div>
           </div>
           <div className="row" style={{ flex: "0 0 auto" }} onClick={(e) => e.stopPropagation()}>
             <input
@@ -159,8 +178,9 @@ export default function EvaluationPanel({
                 }
               }}
             />
-            <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload key file</button>
-            <button type="button" onClick={saveKey}>Save answer key</button>
+            <button type="button" className="secondary" onClick={() => keyRef.current?.click()}>Upload Key File</button>
+            <button type="button" className="secondary" onClick={exportKey}>Export Answer Key</button>
+            <button type="button" onClick={saveKey}>Save Answer Key</button>
           </div>
         </summary>
         {groups.map((group) => (
@@ -221,6 +241,9 @@ export default function EvaluationPanel({
         </div>
         <div className="card eval-compact-card">
           <h3>Upload Scanned OMR Sheets</h3>
+          <p className="muted">
+            {keyComplete ? "Upload completed OMR scans for this exam." : "Mark every question in the Answer Key to enable upload."}
+          </p>
           <input
             ref={scanRef}
             type="file"
@@ -228,7 +251,7 @@ export default function EvaluationPanel({
             accept="image/*"
             hidden
             onChange={async (e) => {
-              if (!e.target.files?.length) return;
+              if (!keyComplete || !e.target.files?.length) return;
               const data = new FormData();
               for (const file of Array.from(e.target.files)) data.append("files", file);
               try {
@@ -244,54 +267,62 @@ export default function EvaluationPanel({
             }}
           />
           <div className="eval-inline-fields">
-            <button type="button" onClick={() => scanRef.current?.click()}>
+            <button type="button" disabled={!keyComplete} onClick={() => scanRef.current?.click()}>
               Upload Sheets
             </button>
-            <a className="btn secondary" href={`/api/exams/${id}/prefilled-omr`}>
-              Generate Pre-Filled OMR
-            </a>
           </div>
-          <p className="muted">Fills name, roll, Test No, Test ID, and date for assigned students from the exam layout.</p>
+        </div>
+        <div className="card eval-compact-card">
+          <h3>Evaluate</h3>
+          <p className="muted">
+            {keyComplete ? "Score uploaded sheets against the saved Answer Key." : "Mark every question in the Answer Key to enable evaluation."}
+          </p>
+          <div className="eval-inline-fields">
+            <button
+              type="button"
+              disabled={!keyComplete}
+              onClick={async () => {
+                if (!keyComplete) return;
+                setErr("");
+                try {
+                  const res = await api.post(`/api/exams/${id}/evaluate`);
+                  setMsg(`Evaluated ${res.evaluated} sheet(s).`);
+                  onReload();
+                } catch (error) {
+                  setErr(error instanceof Error ? error.message : "Evaluation failed");
+                }
+              }}
+            >
+              Evaluate Uploaded OMR Sheets
+            </button>
+            <button
+              type="button"
+              className="btn-delete"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: "Reset OMR Data",
+                  message: "Clear all uploaded OMR sheets and scores for this exam? The answer key and exam details will be kept.",
+                });
+                if (!ok) return;
+                setErr("");
+                try {
+                  const res = await api.post(`/api/exams/${id}/reset-omr`);
+                  setMsg(`OMR data cleared (${res.removed} sheet(s) removed).`);
+                  setViewSheet(null);
+                  onReload();
+                } catch (error) {
+                  setErr(error instanceof Error ? error.message : "Could not reset OMR data");
+                }
+              }}
+            >
+              Reset OMR Data
+            </button>
+          </div>
         </div>
       </div>
-      <div className="card">
-        <div className="row">
-          <button onClick={async () => {
-            setErr("");
-            try {
-              const res = await api.post(`/api/exams/${id}/evaluate`);
-              setMsg(`Evaluated ${res.evaluated} sheet(s).`);
-              onReload();
-            } catch (error) {
-              setErr(error instanceof Error ? error.message : "Evaluation failed");
-            }
-          }}>Evaluate uploaded OMR sheets</button>
-          <button
-            type="button"
-            className="btn-delete"
-            onClick={async () => {
-              const ok = await confirm({
-                title: "Reset OMR data",
-                message: "Clear all uploaded OMR sheets and scores for this exam? The answer key and exam details will be kept.",
-              });
-              if (!ok) return;
-              setErr("");
-              try {
-                const res = await api.post(`/api/exams/${id}/reset-omr`);
-                setMsg(`OMR data cleared (${res.removed} sheet(s) removed).`);
-                setViewSheet(null);
-                onReload();
-              } catch (error) {
-                setErr(error instanceof Error ? error.message : "Could not reset OMR data");
-              }
-            }}
-          >
-            Reset OMR data
-          </button>
-        </div>
-        {msg && <p>{msg}</p>}
-        {err && <p className="error">{err}</p>}
-      </div>
+      {(msg || err) && (
+        <p className={err ? "error" : ""}>{err || msg}</p>
+      )}
       <div className="card">
         <h3>Matched Sheets</h3>
         <BulkBar

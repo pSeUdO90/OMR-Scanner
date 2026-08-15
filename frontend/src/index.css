@@ -149,9 +149,9 @@ details.answer-key-card > summary {
 details.answer-key-card > summary::-webkit-details-marker { display: none; }
 details.answer-key-card > summary::before { content: none; }
 .answer-key-toggle {
-  flex: 0 0 3.25rem;
-  width: 3.25rem;
-  height: 3.25rem;
+  flex: 0 0 3.75rem;
+  width: 3.75rem;
+  height: 3.75rem;
   border-radius: 0.7rem;
   background: rgba(16, 187, 195, 0.16);
   border: 2px solid var(--cyan);
@@ -172,12 +172,24 @@ details.answer-key-card[open] > summary .answer-key-toggle::after {
   top: 38%;
   transform: translate(-50%, -50%) rotate(45deg);
 }
-details.answer-key-card[open] > summary { margin-bottom: 0.8rem; }
+.answer-key-marked {
+  margin: 0.2rem 0 0.15rem;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--cyan);
+  letter-spacing: 0.01em;
+}
+button:disabled, .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .eval-split-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.1fr);
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  align-items: stretch;
 }
 .eval-compact-card {
   margin-bottom: 0;
@@ -199,7 +211,7 @@ details.answer-key-card[open] > summary { margin-bottom: 0.8rem; }
   padding: 0.38rem 0.75rem;
   font-size: 0.82rem;
 }
-@media (max-width: 860px) {
+@media (max-width: 1100px) {
   .eval-split-row { grid-template-columns: 1fr; }
 }
 .key-block { margin: 0.8rem 0 1.1rem; }
