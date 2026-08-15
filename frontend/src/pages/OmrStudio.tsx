@@ -135,6 +135,7 @@ export default function OmrStudio() {
       <aside className="omr-studio-sidebar no-print">
         <p className="muted"><Link to="/layouts">← OMR layouts</Link></p>
         <h2>A4 OMR Studio</h2>
+        <p className="muted omr-hint">Drag a block on the sheet to place it. Position snaps to the grid.</p>
 
         <fieldset className="omr-set">
           <legend>Sheet</legend>
@@ -331,6 +332,10 @@ export default function OmrStudio() {
             showGrid={showGrid}
             geometry={geometry}
             onSelect={setSelectedId}
+            onMove={(id, col0, row0) => {
+              setBlocks((current) => current.map((block) => (block.id === id ? { ...block, col0, row0 } : block)));
+              setDraft((current) => (current && current.id === id ? { ...current, col0, row0 } : current));
+            }}
           />
         </div>
       </div>

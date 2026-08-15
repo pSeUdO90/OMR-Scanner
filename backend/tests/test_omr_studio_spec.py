@@ -55,8 +55,12 @@ def test_omr_studio_export_schema_strings():
     assert "roll_number_grid" in engine
     assert "candidates.roll_number" in engine
     assert "Math.min(6," in engine
+    assert "clampBlockOrigin" in engine
     studio = (ROOT.parent / "pages" / "OmrStudio.tsx").read_text()
     assert "[1, 2, 3, 4, 5, 6]" in studio
     assert "Export JSON" in studio
     assert "Quality check" in studio
     assert "Sync with horizontal bubble rows" in studio
+    canvas = (ROOT / "OmrCanvas.tsx").read_text()
+    assert "onPointerDown" in canvas
+    assert "onMove" in canvas

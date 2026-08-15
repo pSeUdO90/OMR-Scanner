@@ -1,15 +1,27 @@
+import { PointerEvent, useRef } from "react";
 import {
   BUBBLE_STROKE_PT,
   cellCenter,
   cellOrigin,
   fiducialRect,
+  mmToCell,
   timingMark,
   timingRows,
   type SheetGeometry,
 } from "./geometry";
-import { bubbleRowsForBlocks, type StudioBlock } from "./layoutEngine";
+import { bubbleRowsForBlocks, clampBlockOrigin, type StudioBlock } from "./layoutEngine";
 
 const PT_TO_MM = 25.4 / 72;
+
+function clientToMm(svg: SVGSVGElement, clientX: number, clientY: number) {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { xMm: 0, yMm: 0 };
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const p = pt.matrixTransform(ctm.inverse());
+  return { xMm: p.x, yMm: p.y };
+}
 
 export default function OmrCanvas({
   title,
@@ -18,6 +30,7 @@ export default function OmrCanvas({
   showGrid,
   geometry,
   onSelect,
+  onMove,
 }: {
   title: string;
   blocks: StudioBlock[];
@@ -25,11 +38,55 @@ export default function OmrCanvas({
   showGrid: boolean;
   geometry: SheetGeometry;
   onSelect: (id: string | null) => void;
+  onMove: (id: string, col0: number, row0: number) => void;
 }) {
   const g = geometry;
   const stroke = BUBBLE_STROKE_PT * PT_TO_MM;
   const radius = g.bubbleDiameterMm / 2;
   const rows = timingRows(g, bubbleRowsForBlocks(blocks));
+  const drag = useRef<{
+    id: string;
+    pointerId: number;
+    offsetCol: number;
+    offsetRow: number;
+    moved: boolean;
+  } | null>(null);
+
+  const onPointerDown = (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
+    const cell = mmToCell(xMm, yMm, g);
+    drag.current = {
+      id: block.id,
+      pointerId: event.pointerId,
+      offsetCol: cell.col - block.col0,
+      offsetRow: cell.row - block.row0,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onSelect(block.id);
+  };
+
+  const onPointerMove = (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
+    const session = drag.current;
+    if (!session || session.id !== block.id || session.pointerId !== event.pointerId) return;
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
+    const cell = mmToCell(xMm, yMm, g);
+    const next = clampBlockOrigin(cell.col - session.offsetCol, cell.row - session.offsetRow, block.cols, block.rows, g);
+    if (next.col0 === block.col0 && next.row0 === block.row0) return;
+    session.moved = true;
+    onMove(block.id, next.col0, next.row0);
+  };
+
+  const endDrag = (event: PointerEvent<SVGGElement>) => {
+    if (drag.current?.pointerId === event.pointerId) drag.current = null;
+  };
+
   return (
     <svg
       className="omr-a4-svg"
@@ -100,10 +157,11 @@ export default function OmrCanvas({
           key={block.id}
           data-block-id={block.blockId}
           className={selectedId === block.id ? "omr-block selected" : "omr-block"}
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelect(block.id);
-          }}
+          onPointerDown={(event) => onPointerDown(event, block)}
+          onPointerMove={(event) => onPointerMove(event, block)}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onClick={(event) => event.stopPropagation()}
         >
           <rect
             x={cellOrigin(block.col0, block.row0, g).xMm}

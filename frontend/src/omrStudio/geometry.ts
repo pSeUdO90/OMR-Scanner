@@ -89,6 +89,14 @@ export function cellOrigin(col: number, row: number, g: SheetGeometry = DEFAULT_
   };
 }
 
+export function mmToCell(xMm: number, yMm: number, g: SheetGeometry = DEFAULT_GEOMETRY) {
+  const origin = gridOrigin(g);
+  return {
+    col: (xMm - origin.xMm) / g.cellMm,
+    row: (yMm - origin.yMm) / g.cellMm,
+  };
+}
+
 export function cellCenter(col: number, row: number, g: SheetGeometry = DEFAULT_GEOMETRY): PointMm {
   const origin = cellOrigin(col, row, g);
   return { xMm: origin.xMm + g.cellMm / 2, yMm: origin.yMm + g.cellMm / 2 };

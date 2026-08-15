@@ -620,6 +620,8 @@ html.omr-studio-active .main { padding: 1rem 1.2rem 1.5rem; }
   background: #fff;
 }
 .omr-grid-cell { pointer-events: none; }
+.omr-block { cursor: grab; touch-action: none; }
+.omr-block:active { cursor: grabbing; }
 
 @media print {
   @page { size: A4 portrait; margin: 0; }

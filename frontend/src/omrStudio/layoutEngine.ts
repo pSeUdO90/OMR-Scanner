@@ -181,3 +181,18 @@ export function bubbleRowsForBlocks(blocks: StudioBlock[]): number[] {
   }
   return [...rows].sort((a, b) => a - b);
 }
+
+export function clampBlockOrigin(
+  col0: number,
+  row0: number,
+  cols: number,
+  rows: number,
+  g: SheetGeometry = DEFAULT_GEOMETRY,
+) {
+  const maxCol = Math.max(0, g.gridCols - cols);
+  const maxRow = Math.max(0, g.gridRows - rows);
+  return {
+    col0: Math.max(0, Math.min(maxCol, Math.round(col0))),
+    row0: Math.max(0, Math.min(maxRow, Math.round(row0))),
+  };
+}
