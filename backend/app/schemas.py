@@ -29,6 +29,17 @@ class SubjectOut(SubjectIn):
     model_config = {"from_attributes": True}
 
 
+class StudioLayoutIn(BaseModel):
+    name: str
+    description: str = ""
+    total_questions: int = 100
+    options: str = "ABCD"
+    config: dict = Field(default_factory=dict)
+    geometry: dict = Field(default_factory=dict)
+    blocks: list[dict] = Field(default_factory=list)
+    mapping: dict = Field(default_factory=dict)
+
+
 class LayoutDesignIn(BaseModel):
     name: str
     description: str = ""
@@ -131,6 +142,10 @@ class AnswerKeyIn(BaseModel):
 
 class AssignSheetIn(BaseModel):
     student_id: int
+
+
+class SheetIdsIn(BaseModel):
+    ids: list[int] = Field(default_factory=list)
 
 
 class SheetOut(BaseModel):

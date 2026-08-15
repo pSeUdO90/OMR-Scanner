@@ -25,7 +25,6 @@ export default function App() {
         <NavLink to="/" end><NavIcon name="dashboard" /> Dashboard</NavLink>
         <NavLink to="/students"><NavIcon name="students" /> Students</NavLink>
         <NavLink to="/subjects"><NavIcon name="subjects" /> Subjects</NavLink>
-        <NavLink to="/layouts/studio"><NavIcon name="layouts" /> OMR studio</NavLink>
         <NavLink to="/layouts"><NavIcon name="layouts" /> OMR layouts</NavLink>
         <NavLink to="/exams"><NavIcon name="exams" /> Exams</NavLink>
         <NavLink to="/evaluation"><NavIcon name="evaluation" /> Evaluation</NavLink>

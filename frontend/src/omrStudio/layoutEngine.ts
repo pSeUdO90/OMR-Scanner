@@ -1,4 +1,4 @@
-import { CONTENT_COL0, CONTENT_COL1, CONTENT_ROW0, CONTENT_ROW1 } from "./geometry";
+import { CONTENT_COL0, CONTENT_COL1, CONTENT_ROW0, CONTENT_ROW1, type SheetGeometry, DEFAULT_GEOMETRY } from "./geometry";
 
 export type BlockType = "GRID_DIGIT" | "GRID_MCQ";
 
@@ -43,26 +43,32 @@ export function defaultConfig(): StudioConfig {
   };
 }
 
-function fits(col0: number, row0: number, cols: number, rows: number) {
-  return (
-    col0 >= CONTENT_COL0 &&
-    row0 >= CONTENT_ROW0 &&
-    col0 + cols - 1 <= CONTENT_COL1 &&
-    row0 + rows - 1 <= CONTENT_ROW1
-  );
+function contentBounds(g: SheetGeometry = DEFAULT_GEOMETRY) {
+  return {
+    col0: g.contentCol0 ?? CONTENT_COL0,
+    col1: g.contentCol1 ?? CONTENT_COL1,
+    row0: g.contentRow0 ?? CONTENT_ROW0,
+    row1: g.contentRow1 ?? CONTENT_ROW1,
+  };
 }
 
-export function buildDefaultBlocks(config: StudioConfig): StudioBlock[] {
+function fits(col0: number, row0: number, cols: number, rows: number, g: SheetGeometry = DEFAULT_GEOMETRY) {
+  const b = contentBounds(g);
+  return col0 >= b.col0 && row0 >= b.row0 && col0 + cols - 1 <= b.col1 && row0 + rows - 1 <= b.row1;
+}
+
+export function buildDefaultBlocks(config: StudioConfig, g: SheetGeometry = DEFAULT_GEOMETRY): StudioBlock[] {
   const questionCount = Math.max(10, Math.min(200, Math.round(config.questionCount)));
-  const questionColumns = Math.max(1, Math.min(4, Math.round(config.questionColumns)));
+  const questionColumns = Math.max(1, Math.min(6, Math.round(config.questionColumns)));
   const options = config.optionSet === "ABCDE" ? "ABCDE" : "ABCD";
   const rollCols = Math.max(4, Math.min(12, Math.round(config.rollCols)));
   const subjectCols = Math.max(2, Math.min(6, Math.round(config.subjectCols)));
   const seriesCols = Math.max(2, Math.min(6, Math.round(config.seriesCols)));
+  const b = contentBounds(g);
 
   const blocks: StudioBlock[] = [];
-  let cursor = CONTENT_COL0;
-  const metaRow = CONTENT_ROW0;
+  let cursor = b.col0;
+  const metaRow = b.row0;
 
   const digitSpecs: Array<Omit<StudioBlock, "id" | "col0" | "row0" | "rows">> = [
     {
@@ -89,7 +95,7 @@ export function buildDefaultBlocks(config: StudioConfig): StudioBlock[] {
   ];
 
   for (const spec of digitSpecs) {
-    if (!fits(cursor, metaRow, spec.cols, 10)) break;
+    if (!fits(cursor, metaRow, spec.cols, 10, g)) break;
     blocks.push({
       ...spec,
       id: uid(spec.blockId),
@@ -101,7 +107,7 @@ export function buildDefaultBlocks(config: StudioConfig): StudioBlock[] {
   }
 
   const mcqRow0 = metaRow + 12;
-  const available = CONTENT_COL1 - CONTENT_COL0 + 1;
+  const available = b.col1 - b.col0 + 1;
   const optionCount = options.length;
   const unit = 1 + optionCount;
   let gap = 1;
@@ -112,8 +118,8 @@ export function buildDefaultBlocks(config: StudioConfig): StudioBlock[] {
   for (let i = 0; i < questionColumns; i++) {
     const endQ = Math.min(questionCount, q + perCol - 1);
     const rows = endQ - q + 1;
-    const col0 = CONTENT_COL0 + i * (unit + gap);
-    if (!fits(col0, mcqRow0, unit, rows)) break;
+    const col0 = b.col0 + i * (unit + gap);
+    if (!fits(col0, mcqRow0, unit, rows, g)) break;
     blocks.push({
       id: uid("mcq"),
       blockId: `mcq_column_${i + 1}`,
@@ -134,16 +140,18 @@ export function buildDefaultBlocks(config: StudioConfig): StudioBlock[] {
   return blocks;
 }
 
-export function addDigitBlock(blocks: StudioBlock[], label = "Custom ID"): StudioBlock[] {
+export function addDigitBlock(blocks: StudioBlock[], label = "Custom ID", g: SheetGeometry = DEFAULT_GEOMETRY): StudioBlock[] {
   const cols = 4;
   const rows = 10;
-  for (let row = CONTENT_ROW0; row <= CONTENT_ROW1 - rows + 1; row++) {
-    for (let col = CONTENT_COL0; col <= CONTENT_COL1 - cols + 1; col++) {
-      const overlap = blocks.some((block) =>
-        col < block.col0 + block.cols + 1 &&
-        col + cols + 1 > block.col0 &&
-        row < block.row0 + block.rows + 1 &&
-        row + rows + 1 > block.row0
+  const b = contentBounds(g);
+  for (let row = b.row0; row <= b.row1 - rows + 1; row++) {
+    for (let col = b.col0; col <= b.col1 - cols + 1; col++) {
+      const overlap = blocks.some(
+        (block) =>
+          col < block.col0 + block.cols + 1 &&
+          col + cols + 1 > block.col0 &&
+          row < block.row0 + block.rows + 1 &&
+          row + rows + 1 > block.row0,
       );
       if (overlap) continue;
       const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "custom_id";
@@ -164,4 +172,12 @@ export function addDigitBlock(blocks: StudioBlock[], label = "Custom ID"): Studi
     }
   }
   return blocks;
+}
+
+export function bubbleRowsForBlocks(blocks: StudioBlock[]): number[] {
+  const rows = new Set<number>();
+  for (const block of blocks) {
+    for (let r = 0; r < block.rows; r++) rows.add(block.row0 + r);
+  }
+  return [...rows].sort((a, b) => a - b);
 }

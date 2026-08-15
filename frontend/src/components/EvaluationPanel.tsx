@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, Exam, Student } from "../api";
+import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "./BulkSelect";
+import { useConfirm } from "./ConfirmProvider";
 
 type Sheet = {
   id: number;
@@ -65,6 +67,9 @@ export default function EvaluationPanel({
   const [students, setStudents] = useState<Student[]>([]);
   const [assigning, setAssigning] = useState<Record<number, number>>({});
   const [viewSheet, setViewSheet] = useState<Sheet | null>(null);
+  const [selectedMatched, setSelectedMatched] = useState<Set<number>>(new Set());
+  const [selectedUnmatched, setSelectedUnmatched] = useState<Set<number>>(new Set());
+  const confirm = useConfirm();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -261,7 +266,11 @@ export default function EvaluationPanel({
             type="button"
             className="btn-delete"
             onClick={async () => {
-              if (!confirm("Clear all uploaded OMR sheets and scores for this exam? The answer key and exam details will be kept.")) return;
+              const ok = await confirm({
+                title: "Reset OMR data",
+                message: "Clear all uploaded OMR sheets and scores for this exam? The answer key and exam details will be kept.",
+              });
+              if (!ok) return;
               setErr("");
               try {
                 const res = await api.post(`/api/exams/${id}/reset-omr`);
@@ -281,11 +290,34 @@ export default function EvaluationPanel({
       </div>
       <div className="card">
         <h3>Matched Sheets</h3>
+        <BulkBar
+          count={selectedMatched.size}
+          onDelete={async () => {
+            const ok = await confirm({
+              title: "Delete sheets",
+              message: `Delete ${selectedMatched.size} matched sheet(s)? This cannot be undone.`,
+            });
+            if (!ok) return;
+            await api.post(`/api/exams/${id}/sheets/bulk-delete`, { ids: [...selectedMatched] });
+            setSelectedMatched(new Set());
+            onReload();
+          }}
+        />
         <table>
-          <thead><tr><th>File</th><th>Roll</th><th>Student</th><th>R/W/L</th><th>Score</th><th>Status</th></tr></thead>
+          <thead>
+            <tr>
+              <SelectAllCell
+                checked={matched.length > 0 && matched.every((s) => selectedMatched.has(s.id))}
+                indeterminate={matched.some((s) => selectedMatched.has(s.id))}
+                onChange={(on) => setSelectedMatched(setAll(matched.map((s) => s.id), on))}
+              />
+              <th>File</th><th>Roll</th><th>Student</th><th>R/W/L</th><th>Score</th><th>Status</th>
+            </tr>
+          </thead>
           <tbody>
             {matched.map((s) => (
               <tr key={s.id}>
+                <SelectCell checked={selectedMatched.has(s.id)} onChange={(on) => setSelectedMatched(toggleId(selectedMatched, s.id, on))} label={`Select ${s.filename}`} />
                 <FileNameCell sheet={s} onView={setViewSheet} />
                 <td>{s.detected_roll}</td>
                 <td>{s.student_name}</td>
@@ -301,11 +333,34 @@ export default function EvaluationPanel({
       <div className="card">
         <h3>Unmatched OMR sheets</h3>
         <p className="muted">Scanned sheets whose roll number is not in the student list. Assign a student to move the file into Matched Sheets.</p>
+        <BulkBar
+          count={selectedUnmatched.size}
+          onDelete={async () => {
+            const ok = await confirm({
+              title: "Delete sheets",
+              message: `Delete ${selectedUnmatched.size} unmatched sheet(s)? This cannot be undone.`,
+            });
+            if (!ok) return;
+            await api.post(`/api/exams/${id}/sheets/bulk-delete`, { ids: [...selectedUnmatched] });
+            setSelectedUnmatched(new Set());
+            onReload();
+          }}
+        />
         <table>
-          <thead><tr><th>File</th><th>Detected roll</th><th>Assign student</th><th>R/W/L</th><th>Score</th><th>Reason</th></tr></thead>
+          <thead>
+            <tr>
+              <SelectAllCell
+                checked={unmatched.length > 0 && unmatched.every((s) => selectedUnmatched.has(s.id))}
+                indeterminate={unmatched.some((s) => selectedUnmatched.has(s.id))}
+                onChange={(on) => setSelectedUnmatched(setAll(unmatched.map((s) => s.id), on))}
+              />
+              <th>File</th><th>Detected roll</th><th>Assign student</th><th>R/W/L</th><th>Score</th><th>Reason</th>
+            </tr>
+          </thead>
           <tbody>
             {unmatched.map((s) => (
               <tr key={s.id}>
+                <SelectCell checked={selectedUnmatched.has(s.id)} onChange={(on) => setSelectedUnmatched(toggleId(selectedUnmatched, s.id, on))} label={`Select ${s.filename}`} />
                 <FileNameCell sheet={s} onView={setViewSheet} />
                 <td>{s.detected_roll || "—"}</td>
                 <td>

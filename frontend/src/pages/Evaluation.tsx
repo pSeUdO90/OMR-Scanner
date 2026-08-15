@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Exam } from "../api";
 import { DeleteButton, EditLink } from "../components/ActionButtons";
+import { useConfirm } from "../components/ConfirmProvider";
 import EvaluationPanel from "../components/EvaluationPanel";
 import PageTitle from "../components/PageTitle";
 
@@ -25,6 +26,7 @@ export default function Evaluation() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [keyString, setKeyString] = useState("");
+  const confirm = useConfirm();
 
   useEffect(() => {
     api.get("/api/exams").then((rows: Exam[]) => {
@@ -63,7 +65,8 @@ export default function Evaluation() {
         {exam && (
           <DeleteButton
             onClick={async () => {
-              if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
+              const ok = await confirm({ title: "Delete exam", message: `Delete exam “${exam.name}”? This cannot be undone.` });
+              if (!ok) return;
               await api.del(`/api/exams/${exam.id}`);
               const rows = await api.get("/api/exams");
               setExams(rows);

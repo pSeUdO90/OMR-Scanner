@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Exam, Layout, Student, Subject } from "../api";
 import { DeleteButton, EditLink } from "../components/ActionButtons";
+import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../components/BulkSelect";
+import { useConfirm } from "../components/ConfirmProvider";
 import ExamForm, { ExamFormState } from "../components/ExamForm";
 import PageTitle from "../components/PageTitle";
 
@@ -12,6 +14,8 @@ export default function Exams() {
   const [students, setStudents] = useState<Student[]>([]);
   const [maps, setMaps] = useState<{ subject_id?: number; subject?: string; start_q: number; end_q: number }[]>([]);
   const [err, setErr] = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const confirm = useConfirm();
   const [form, setForm] = useState<ExamFormState>({
     name: "",
     exam_date: new Date().toISOString().slice(0, 10),
@@ -88,11 +92,38 @@ export default function Exams() {
       />
       <div className="card">
         <h3>All exams</h3>
+        <BulkBar
+          count={selected.size}
+          onDelete={async () => {
+            const ok = await confirm({
+              title: "Delete exams",
+              message: `Delete ${selected.size} exam(s)? This cannot be undone.`,
+            });
+            if (!ok) return;
+            try {
+              for (const id of selected) await api.del(`/api/exams/${id}`);
+              setSelected(new Set());
+              setExams(await api.get("/api/exams"));
+            } catch (error) {
+              setErr(error instanceof Error ? error.message : "Could not delete exam");
+            }
+          }}
+        />
         <table>
-          <thead><tr><th>Exam Name</th><th>Date</th><th>Class</th><th>Section</th><th>Batch</th><th>Type</th><th>Test ID</th><th>Layout</th><th>Status</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <SelectAllCell
+                checked={exams.length > 0 && exams.every((e) => selected.has(e.id))}
+                indeterminate={exams.some((e) => selected.has(e.id))}
+                onChange={(on) => setSelected(setAll(exams.map((e) => e.id), on))}
+              />
+              <th>Exam Name</th><th>Date</th><th>Class</th><th>Section</th><th>Batch</th><th>Type</th><th>Test ID</th><th>Layout</th><th>Status</th><th></th>
+            </tr>
+          </thead>
           <tbody>
             {exams.map((exam) => (
               <tr key={exam.id}>
+                <SelectCell checked={selected.has(exam.id)} onChange={(on) => setSelected(toggleId(selected, exam.id, on))} label={`Select ${exam.name}`} />
                 <td><Link to={`/exams/${exam.id}`}>{exam.name}</Link></td>
                 <td>{exam.exam_date}</td>
                 <td>{exam.class_name || "—"}</td>
@@ -107,7 +138,8 @@ export default function Exams() {
                   <Link className="btn secondary" to={`/exams/${exam.id}?tab=evaluation`}>Evaluate</Link>
                   <DeleteButton
                     onClick={async () => {
-                      if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
+                      const ok = await confirm({ title: "Delete exam", message: `Delete exam “${exam.name}”? This cannot be undone.` });
+                      if (!ok) return;
                       try {
                         await api.del(`/api/exams/${exam.id}`);
                         setExams(await api.get("/api/exams"));

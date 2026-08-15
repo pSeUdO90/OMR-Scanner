@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, Exam, Layout, Student, Subject } from "../api";
 import { DeleteButton, EditButton } from "../components/ActionButtons";
+import { useConfirm } from "../components/ConfirmProvider";
 import ExamForm, { ExamFormState, examToForm } from "../components/ExamForm";
 import EvaluationPanel from "../components/EvaluationPanel";
 import PageTitle from "../components/PageTitle";
@@ -35,6 +36,7 @@ export default function ExamDetail() {
   const [maps, setMaps] = useState<{ subject_id?: number; subject?: string; start_q: number; end_q: number }[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const confirm = useConfirm();
 
   const load = async () => {
     const [e, layoutRows, subjectRows, studentRows] = await Promise.all([
@@ -106,7 +108,8 @@ export default function ExamDetail() {
         <Link className={tab === "results" ? "btn active" : "btn"} to={`/exams/${id}/results`}>Results</Link>
         <DeleteButton
           onClick={async () => {
-            if (!confirm(`Delete exam “${exam.name}”? This cannot be undone.`)) return;
+                    const ok = await confirm({ title: "Delete exam", message: `Delete exam “${exam.name}”? This cannot be undone.` });
+                    if (!ok) return;
             try {
               await api.del(`/api/exams/${id}`);
               navigate("/exams");

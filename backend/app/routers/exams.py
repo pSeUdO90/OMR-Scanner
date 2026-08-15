@@ -20,7 +20,7 @@ from ..omr.analyze import analyze_layout_config
 from ..omr.generator import generate_sheet, prefill_on_layout_sample
 from ..omr.processor import evaluate_image, load_image, parse_layout, save_image
 from ..omr.sample_file import sample_to_image_bytes
-from ..schemas import AnswerKeyIn, AssignSheetIn, ExamIn, ExamOut, GraceIn, SheetOut, SubjectMapOut
+from ..schemas import AnswerKeyIn, AssignSheetIn, ExamIn, ExamOut, GraceIn, SheetIdsIn, SheetOut, SubjectMapOut
 from ..scoring import assigned_students, bind_sheet_student, build_analytics, parse_question_numbers, rescore_stored_sheets, score_sheet
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
@@ -568,6 +568,22 @@ def sheet_image(exam_id: int, sheet_id: int, db: Session = Depends(get_db)):
     if not path or not Path(path).exists():
         raise HTTPException(404, "Sheet image not found")
     return FileResponse(path)
+
+
+@router.post("/{exam_id}/sheets/bulk-delete")
+def bulk_delete_sheets(exam_id: int, payload: SheetIdsIn, db: Session = Depends(get_db)):
+    exam = _load_exam(db, exam_id)
+    removed = 0
+    for sheet in list(exam.sheets):
+        if sheet.id not in payload.ids:
+            continue
+        for path in (sheet.stored_path, sheet.overlay_path):
+            if path and Path(path).exists():
+                Path(path).unlink(missing_ok=True)
+        db.delete(sheet)
+        removed += 1
+    db.commit()
+    return {"ok": True, "removed": removed}
 
 
 @router.put("/{exam_id}/sheets/{sheet_id}/assign", response_model=SheetOut)

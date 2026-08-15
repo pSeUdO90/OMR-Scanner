@@ -1,18 +1,13 @@
-import { StudioBlock } from "./layoutEngine";
 import {
-  BUBBLE_RADIUS_MM,
   BUBBLE_STROKE_PT,
-  CELL_MM,
-  GRID_COLS,
-  GRID_ROWS,
-  PAGE_HEIGHT_MM,
-  PAGE_WIDTH_MM,
   cellCenter,
   cellOrigin,
   fiducialRect,
   timingMark,
   timingRows,
+  type SheetGeometry,
 } from "./geometry";
+import { bubbleRowsForBlocks, type StudioBlock } from "./layoutEngine";
 
 const PT_TO_MM = 25.4 / 72;
 
@@ -21,27 +16,32 @@ export default function OmrCanvas({
   blocks,
   selectedId,
   showGrid,
+  geometry,
   onSelect,
 }: {
   title: string;
   blocks: StudioBlock[];
   selectedId: string | null;
   showGrid: boolean;
+  geometry: SheetGeometry;
   onSelect: (id: string | null) => void;
 }) {
+  const g = geometry;
   const stroke = BUBBLE_STROKE_PT * PT_TO_MM;
+  const radius = g.bubbleDiameterMm / 2;
+  const rows = timingRows(g, bubbleRowsForBlocks(blocks));
   return (
     <svg
       className="omr-a4-svg"
-      viewBox={`0 0 ${PAGE_WIDTH_MM} ${PAGE_HEIGHT_MM}`}
-      width="210mm"
-      height="297mm"
+      viewBox={`0 0 ${g.pageWidthMm} ${g.pageHeightMm}`}
+      width={`${g.pageWidthMm}mm`}
+      height={`${g.pageHeightMm}mm`}
       xmlns="http://www.w3.org/2000/svg"
       data-omr-page="a4"
     >
-      <rect x="0" y="0" width={PAGE_WIDTH_MM} height={PAGE_HEIGHT_MM} fill="#ffffff" />
+      <rect x="0" y="0" width={g.pageWidthMm} height={g.pageHeightMm} fill="#ffffff" />
       {(["TL", "TR", "BL", "BR"] as const).map((id) => {
-        const box = fiducialRect(id);
+        const box = fiducialRect(id, g);
         return (
           <rect
             key={id}
@@ -54,9 +54,9 @@ export default function OmrCanvas({
           />
         );
       })}
-      {timingRows().map((row) =>
+      {rows.map((row) =>
         (["left", "right"] as const).map((side) => {
-          const mark = timingMark(side, row);
+          const mark = timingMark(side, row, g);
           return (
             <rect
               key={`${side}-${row}`}
@@ -71,29 +71,29 @@ export default function OmrCanvas({
         })
       )}
       {showGrid &&
-        Array.from({ length: GRID_COLS * GRID_ROWS }, (_, i) => {
-          const col = i % GRID_COLS;
-          const row = Math.floor(i / GRID_COLS);
-          const origin = cellOrigin(col, row);
+        Array.from({ length: g.gridCols * g.gridRows }, (_, i) => {
+          const col = i % g.gridCols;
+          const row = Math.floor(i / g.gridCols);
+          const origin = cellOrigin(col, row, g);
           return (
             <rect
               key={`g-${col}-${row}`}
               className="omr-grid-cell"
               x={origin.xMm}
               y={origin.yMm}
-              width={CELL_MM}
-              height={CELL_MM}
+              width={g.cellMm}
+              height={g.cellMm}
               fill="none"
               stroke="#10BBC3"
               strokeWidth="0.12"
             />
           );
         })}
-      <text x={PAGE_WIDTH_MM / 2} y="18" textAnchor="middle" fontSize="4.2" fontFamily="Roboto, Arial, sans-serif" fill="#000">
+      <text x={g.pageWidthMm / 2} y="18" textAnchor="middle" fontSize="4.2" fontFamily="Roboto, Arial, sans-serif" fill="#000">
         {title}
       </text>
-      <text x={PAGE_WIDTH_MM / 2} y="23" textAnchor="middle" fontSize="2.4" fontFamily="Roboto, Arial, sans-serif" fill="#000">
-        A4 210×297 mm · 6.5 mm grid · 4.5 mm bubbles
+      <text x={g.pageWidthMm / 2} y="23" textAnchor="middle" fontSize="2.4" fontFamily="Roboto, Arial, sans-serif" fill="#000">
+        {g.pageWidthMm}×{g.pageHeightMm} mm · {g.cellMm} mm grid · {g.bubbleDiameterMm} mm bubbles
       </text>
       {blocks.map((block) => (
         <g
@@ -106,18 +106,18 @@ export default function OmrCanvas({
           }}
         >
           <rect
-            x={cellOrigin(block.col0, block.row0).xMm}
-            y={cellOrigin(block.col0, block.row0).yMm}
-            width={block.cols * CELL_MM}
-            height={block.rows * CELL_MM}
+            x={cellOrigin(block.col0, block.row0, g).xMm}
+            y={cellOrigin(block.col0, block.row0, g).yMm}
+            width={block.cols * g.cellMm}
+            height={block.rows * g.cellMm}
             fill={selectedId === block.id ? "rgba(16,187,195,0.08)" : "transparent"}
             stroke={selectedId === block.id ? "#10BBC3" : "none"}
             strokeWidth="0.35"
             className="omr-block-hit"
           />
           <text
-            x={cellOrigin(block.col0, block.row0).xMm}
-            y={cellOrigin(block.col0, block.row0).yMm - 3.2}
+            x={cellOrigin(block.col0, block.row0, g).xMm}
+            y={cellOrigin(block.col0, block.row0, g).yMm - 3.2}
             fontSize="2.2"
             fontFamily="Roboto, Arial, sans-serif"
             fill="#000"
@@ -125,9 +125,9 @@ export default function OmrCanvas({
             {block.label}
           </text>
           {block.blockType === "GRID_DIGIT" ? (
-            <DigitBubbles block={block} stroke={stroke} />
+            <DigitBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
           ) : (
-            <McqBubbles block={block} stroke={stroke} />
+            <McqBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
           )}
         </g>
       ))}
@@ -135,34 +135,37 @@ export default function OmrCanvas({
   );
 }
 
-function DigitBubbles({ block, stroke }: { block: StudioBlock; stroke: number }) {
+function DigitBubbles({
+  block,
+  stroke,
+  radius,
+  geometry: g,
+}: {
+  block: StudioBlock;
+  stroke: number;
+  radius: number;
+  geometry: SheetGeometry;
+}) {
   const nodes = [];
   let targetId = 1;
   for (let col = 0; col < block.cols; col++) {
-    const header = cellCenter(block.col0 + col, block.row0);
+    const header = cellCenter(block.col0 + col, block.row0, g);
     nodes.push(
-      <text key={`h-${col}`} x={header.xMm} y={cellOrigin(block.col0, block.row0).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
+      <text key={`h-${col}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
         {col + 1}
       </text>
     );
     for (let row = 0; row < block.rows; row++) {
-      const center = cellCenter(block.col0 + col, block.row0 + row);
+      const center = cellCenter(block.col0 + col, block.row0 + row, g);
       const id = targetId++;
       nodes.push(
         <g key={`d-${col}-${row}`} data-target-id={id}>
           {col === 0 && (
-            <text x={center.xMm - CELL_MM * 0.72} y={center.yMm + 0.7} fontSize="1.7" fill="#000">
+            <text x={center.xMm - g.cellMm * 0.72} y={center.yMm + 0.7} fontSize="1.7" fill="#000">
               {row % 10}
             </text>
           )}
-          <circle
-            cx={center.xMm}
-            cy={center.yMm}
-            r={BUBBLE_RADIUS_MM}
-            fill="none"
-            stroke="#000000"
-            strokeWidth={stroke}
-          />
+          <circle cx={center.xMm} cy={center.yMm} r={radius} fill="none" stroke="#000000" strokeWidth={stroke} />
         </g>
       );
     }
@@ -170,28 +173,38 @@ function DigitBubbles({ block, stroke }: { block: StudioBlock; stroke: number })
   return <>{nodes}</>;
 }
 
-function McqBubbles({ block, stroke }: { block: StudioBlock; stroke: number }) {
+function McqBubbles({
+  block,
+  stroke,
+  radius,
+  geometry: g,
+}: {
+  block: StudioBlock;
+  stroke: number;
+  radius: number;
+  geometry: SheetGeometry;
+}) {
   const options = block.options || "ABCD";
   const startQ = block.startQ || 1;
   const nodes = [];
   let targetId = 1;
   for (let c = 0; c < options.length; c++) {
-    const header = cellCenter(block.col0 + 1 + c, block.row0);
+    const header = cellCenter(block.col0 + 1 + c, block.row0, g);
     nodes.push(
-      <text key={`oh-${c}`} x={header.xMm} y={cellOrigin(block.col0, block.row0).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
+      <text key={`oh-${c}`} x={header.xMm} y={cellOrigin(block.col0, block.row0, g).yMm - 1} textAnchor="middle" fontSize="1.8" fill="#000">
         {options[c]}
       </text>
     );
   }
   for (let r = 0; r < block.rows; r++) {
-    const label = cellCenter(block.col0, block.row0 + r);
+    const label = cellCenter(block.col0, block.row0 + r, g);
     nodes.push(
       <text key={`q-${r}`} x={label.xMm} y={label.yMm + 0.7} textAnchor="middle" fontSize="1.7" fill="#000">
         {String(startQ + r).padStart(2, "0")}
       </text>
     );
     for (let c = 0; c < options.length; c++) {
-      const center = cellCenter(block.col0 + 1 + c, block.row0 + r);
+      const center = cellCenter(block.col0 + 1 + c, block.row0 + r, g);
       const id = targetId++;
       nodes.push(
         <circle
@@ -199,7 +212,7 @@ function McqBubbles({ block, stroke }: { block: StudioBlock; stroke: number }) {
           data-target-id={id}
           cx={center.xMm}
           cy={center.yMm}
-          r={BUBBLE_RADIUS_MM}
+          r={radius}
           fill="none"
           stroke="#000000"
           strokeWidth={stroke}

@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, Student } from "../api";
 import { DeleteButton, ViewLink } from "../components/ActionButtons";
+import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../components/BulkSelect";
+import { useConfirm } from "../components/ConfirmProvider";
 import PageTitle from "../components/PageTitle";
 
 const empty = { roll_no: "", name: "", gender: "M", class_name: "", section: "", session: "2025-26" };
@@ -21,6 +23,8 @@ export default function Students() {
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingFile = useRef<File | null>(null);
+  const confirm = useConfirm();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [conflict, setConflict] = useState<{ existing: { roll_no: string; name: string; current_name: string }[]; newCount: number } | null>(null);
   const load = () => api.get("/api/students").then(setRows);
   useEffect(() => { load(); }, []);
@@ -125,17 +129,43 @@ export default function Students() {
         </div>
       </form>
       <div className="card">
+        <BulkBar
+          count={selected.size}
+          onDelete={async () => {
+            const ok = await confirm({
+              title: "Delete students",
+              message: `Delete ${selected.size} student(s)? This cannot be undone.`,
+            });
+            if (!ok) return;
+            for (const id of selected) await api.del(`/api/students/${id}`);
+            setSelected(new Set());
+            load();
+          }}
+        />
         <table>
           <thead>
-            <tr><th>Roll no</th><th>Student Name</th><th>Gender</th><th>Class</th><th>Section</th><th>Session</th><th></th></tr>
+            <tr>
+              <SelectAllCell
+                checked={filtered.length > 0 && filtered.every((s) => selected.has(s.id))}
+                indeterminate={filtered.some((s) => selected.has(s.id))}
+                onChange={(on) => setSelected(setAll(filtered.map((s) => s.id), on))}
+              />
+              <th>Roll no</th><th>Student Name</th><th>Gender</th><th>Class</th><th>Section</th><th>Session</th><th></th>
+            </tr>
           </thead>
           <tbody>
             {filtered.map((s) => (
               <tr key={s.id}>
+                <SelectCell checked={selected.has(s.id)} onChange={(on) => setSelected(toggleId(selected, s.id, on))} label={`Select ${s.roll_no}`} />
                 <td>{s.roll_no}</td><td>{s.name}</td><td>{s.gender}</td><td>{s.class_name}</td><td>{s.section}</td><td>{s.session}</td>
                 <td className="row-actions">
                   <ViewLink to={`/students/${s.id}`}>View</ViewLink>
-                  <DeleteButton onClick={async () => { await api.del(`/api/students/${s.id}`); load(); }}>Delete</DeleteButton>
+                  <DeleteButton onClick={async () => {
+                    const ok = await confirm({ title: "Delete student", message: `Delete “${s.name}”? This cannot be undone.` });
+                    if (!ok) return;
+                    await api.del(`/api/students/${s.id}`);
+                    load();
+                  }}>Delete</DeleteButton>
                 </td>
               </tr>
             ))}

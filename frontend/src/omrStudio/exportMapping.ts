@@ -1,13 +1,12 @@
 import { StudioBlock } from "./layoutEngine";
 import {
-  BUBBLE_RADIUS_MM,
-  PAGE_HEIGHT_MM,
-  PAGE_WIDTH_MM,
+  DEFAULT_GEOMETRY,
   cellCenter,
   cellOrigin,
   fiducialRect,
   mmToPct,
   sizeToPct,
+  type SheetGeometry,
 } from "./geometry";
 
 export type MappingTarget = {
@@ -35,57 +34,57 @@ export type MappingDocument = {
   dataBlocks: MappingBlock[];
 };
 
-export function blockBoundsMm(block: StudioBlock) {
-  const origin = cellOrigin(block.col0, block.row0);
+export function blockBoundsMm(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOMETRY) {
+  const origin = cellOrigin(block.col0, block.row0, g);
   return {
     xMm: origin.xMm,
     yMm: origin.yMm,
-    widthMm: block.cols * 6.5,
-    heightMm: block.rows * 6.5,
+    widthMm: block.cols * g.cellMm,
+    heightMm: block.rows * g.cellMm,
   };
 }
 
-export function digitTargets(block: StudioBlock): MappingTarget[] {
+export function digitTargets(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOMETRY): MappingTarget[] {
   const targets: MappingTarget[] = [];
   let targetId = 1;
   for (let col = 0; col < block.cols; col++) {
     for (let row = 0; row < block.rows; row++) {
-      const center = cellCenter(block.col0 + col, block.row0 + row);
+      const center = cellCenter(block.col0 + col, block.row0 + row, g);
       targets.push({
         targetId: targetId++,
         gridPosition: { row: row + 1, col: col + 1 },
         value: String(row % 10),
-        centerRelative: mmToPct(center.xMm, center.yMm),
+        centerRelative: mmToPct(center.xMm, center.yMm, g),
       });
     }
   }
   return targets;
 }
 
-export function mcqTargets(block: StudioBlock): MappingTarget[] {
+export function mcqTargets(block: StudioBlock, g: SheetGeometry = DEFAULT_GEOMETRY): MappingTarget[] {
   const options = block.options || "ABCD";
   const targets: MappingTarget[] = [];
   let targetId = 1;
   for (let r = 0; r < block.rows; r++) {
     for (let c = 0; c < options.length; c++) {
-      const center = cellCenter(block.col0 + 1 + c, block.row0 + r);
+      const center = cellCenter(block.col0 + 1 + c, block.row0 + r, g);
       targets.push({
         targetId: targetId++,
         gridPosition: { row: r + 1, col: c + 1 },
         value: options[c],
-        centerRelative: mmToPct(center.xMm, center.yMm),
+        centerRelative: mmToPct(center.xMm, center.yMm, g),
       });
     }
   }
   return targets;
 }
 
-export function mappingFromGeometry(blocks: StudioBlock[]): MappingDocument {
-  const tl = fiducialRect("TL");
+export function mappingFromGeometry(blocks: StudioBlock[], g: SheetGeometry = DEFAULT_GEOMETRY): MappingDocument {
+  const tl = fiducialRect("TL", g);
   const dataBlocks: MappingBlock[] = blocks.map((block) => {
-    const bounds = blockBoundsMm(block);
-    const size = sizeToPct(bounds.widthMm, bounds.heightMm);
-    const origin = mmToPct(bounds.xMm, bounds.yMm);
+    const bounds = blockBoundsMm(block, g);
+    const size = sizeToPct(bounds.widthMm, bounds.heightMm, g);
+    const origin = mmToPct(bounds.xMm, bounds.yMm, g);
     const isDigit = block.blockType === "GRID_DIGIT";
     return {
       blockId: block.blockId,
@@ -102,20 +101,29 @@ export function mappingFromGeometry(blocks: StudioBlock[]): MappingDocument {
         widthPct: size.widthPct,
         heightPct: size.heightPct,
       },
-      targets: isDigit ? digitTargets(block) : mcqTargets(block),
+      targets: isDigit ? digitTargets(block, g) : mcqTargets(block, g),
     };
   });
   return {
     documentMetadata: {
-      pageSize: { widthMm: PAGE_WIDTH_MM, heightMm: PAGE_HEIGHT_MM },
-      referenceAnchorTopLeft: mmToPct(tl.xMm, tl.yMm),
-      grid: { cellMm: 6.5, columns: 32, rows: 45, bubbleDiameterMm: BUBBLE_RADIUS_MM * 2 },
+      pageSize: { widthMm: g.pageWidthMm, heightMm: g.pageHeightMm },
+      referenceAnchorTopLeft: mmToPct(tl.xMm, tl.yMm, g),
+      grid: {
+        cellMm: g.cellMm,
+        columns: g.gridCols,
+        rows: g.gridRows,
+        bubbleDiameterMm: g.bubbleDiameterMm,
+      },
     },
     dataBlocks,
   };
 }
 
-export function mappingFromDom(pageEl: Element, blocks: StudioBlock[]): MappingDocument {
+export function mappingFromDom(
+  pageEl: Element,
+  blocks: StudioBlock[],
+  g: SheetGeometry = DEFAULT_GEOMETRY,
+): MappingDocument {
   const page = pageEl.getBoundingClientRect();
   const width = Math.max(page.width, 1);
   const height = Math.max(page.height, 1);
@@ -123,7 +131,7 @@ export function mappingFromDom(pageEl: Element, blocks: StudioBlock[]): MappingD
     xPct: ((rect.left + rect.width / 2 - page.left) / width) * 100,
     yPct: ((rect.top + rect.height / 2 - page.top) / height) * 100,
   });
-  const base = mappingFromGeometry(blocks);
+  const base = mappingFromGeometry(blocks, g);
   const tl = pageEl.querySelector("[data-fiducial='TL']")?.getBoundingClientRect();
   if (tl) {
     base.documentMetadata.referenceAnchorTopLeft = {

@@ -397,3 +397,30 @@ def test_student_import_and_exam_flow(tmp_path):
     after_reset = client.get(f"/api/exams/{exam_id}").json()
     assert after_reset["answer_key"] == saved_key
     assert after_reset["status"] == "draft"
+
+
+def test_studio_layout_saves_mapping_json():
+    client = TestClient(app)
+    payload = {
+        "name": "Studio Save Test",
+        "description": "studio",
+        "total_questions": 40,
+        "options": "ABCD",
+        "config": {"title": "Studio Save Test", "questionCount": 40, "questionColumns": 5, "optionSet": "ABCD", "rollCols": 8},
+        "geometry": {"pageWidthMm": 210, "pageHeightMm": 297, "cellMm": 6.5, "gridCols": 32, "gridRows": 45, "bubbleDiameterMm": 4.5},
+        "blocks": [{"id": "mcq-1", "blockId": "mcq_column_1", "dbColumnBinding": "student_responses.q_01_to_40", "blockType": "GRID_MCQ"}],
+        "mapping": {"documentMetadata": {"pageSize": {"widthMm": 210, "heightMm": 297}}, "dataBlocks": []},
+    }
+    created = client.post("/api/layouts/studio", json=payload)
+    assert created.status_code == 200, created.text
+    row = created.json()
+    assert row["name"] == "Studio Save Test"
+    assert row["total_questions"] == 40
+    stored = SessionLocal().query(OmrLayout).filter(OmrLayout.id == row["id"]).one()
+    config = json.loads(stored.config_json)
+    assert config["studio"] is True
+    assert config["studio_mapping"]["documentMetadata"]["pageSize"]["widthMm"] == 210
+    assert config["studio_blocks"][0]["blockId"] == "mcq_column_1"
+    assert config["studio_config"]["questionColumns"] == 5
+    assert client.delete(f"/api/layouts/{row['id']}").status_code == 200
+

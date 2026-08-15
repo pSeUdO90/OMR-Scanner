@@ -23,7 +23,7 @@ from ..omr.layouts import (
 )
 from ..omr.processor import load_image, save_image
 from ..omr.sample_file import sample_to_image_bytes
-from ..schemas import LayoutDesignIn, LayoutOut
+from ..schemas import LayoutDesignIn, LayoutOut, StudioLayoutIn
 
 router = APIRouter(prefix="/api/layouts", tags=["layouts"])
 
@@ -86,6 +86,46 @@ def get_predefined_blocks(total_questions: int = 100, columns: int = 4, options:
             roll_cols=roll_cols,
         ),
     }
+
+
+@router.post("/studio", response_model=LayoutOut)
+def save_studio_layout(payload: StudioLayoutIn, db: Session = Depends(get_db)):
+    slug = _unique_slug(db, payload.name)
+    options = "".join(ch for ch in payload.options.upper() if ch in "ABCDEF") or "ABCD"
+    columns = max(1, min(6, int((payload.config or {}).get("questionColumns") or 4)))
+    roll_cols = max(4, min(12, int((payload.config or {}).get("rollCols") or 8)))
+    maps = [{"subject": "Paper", "code": "PAP", "start_q": 1, "end_q": payload.total_questions}]
+    config = a4_design_layout(
+        name=payload.name,
+        slug=slug,
+        total_questions=payload.total_questions,
+        columns=columns,
+        options=options,
+        description=payload.description,
+        default_maps=maps,
+        roll_cols=roll_cols,
+    )
+    config["studio"] = True
+    config["studio_config"] = payload.config
+    config["studio_geometry"] = payload.geometry
+    config["studio_blocks"] = payload.blocks
+    config["studio_mapping"] = payload.mapping
+    sample_path = _write_designed_sample(slug, config)
+    row = OmrLayout(
+        slug=slug,
+        name=payload.name,
+        description=payload.description or config["description"],
+        total_questions=config["total_questions"],
+        options=config["options"],
+        config_json=json.dumps(config),
+        is_builtin=False,
+        sample_path=sample_path,
+        field_map_json=json.dumps({"date": "exam_date", "test_id": "test_id", "test_no": "test_no"}),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _layout_out(row, with_image=True)
 
 
 @router.post("/design", response_model=LayoutOut)
