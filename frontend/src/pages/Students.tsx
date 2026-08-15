@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api, Student } from "../api";
+import { api, authFileUrl, Student } from "../api";
 import { DeleteButton, EditButton, ViewLink } from "../components/ActionButtons";
 import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../components/BulkSelect";
 import { useConfirm } from "../components/ConfirmProvider";
@@ -12,6 +12,15 @@ const SESSION_CHOICES = ["2024-25", "2025-26", "2026-27"];
 function mergeChoices(base: string[], extra: string[], current: string) {
   return Array.from(new Set([...base, ...extra, current].map((item) => item.trim()).filter(Boolean)));
 }
+
+const empty = {
+  roll_no: "",
+  name: "",
+  gender: "M",
+  class_name: "",
+  section: "",
+  session: "",
+};
 const labels: Record<string, string> = {
   roll_no: "Roll no",
   name: "Student Name",
@@ -39,14 +48,16 @@ export default function Students() {
   });
   const [conflict, setConflict] = useState<{ existing: { roll_no: string; name: string; current_name: string }[]; newCount: number } | null>(null);
   const load = () => {
-    api.get("/api/students").then(setRows);
+    api.get("/api/students").then(setRows).catch((error) => {
+      setErr(error instanceof Error ? error.message : "Could not load students");
+    });
     api.get("/api/students/options").then((row) =>
       setChoices({
         classes: (row.classes as string[]) || [],
         sections: (row.sections as string[]) || [],
         batches: (row.batches as string[]) || [],
       }),
-    );
+    ).catch(() => undefined);
   };
   useEffect(() => { load(); }, []);
 
@@ -111,7 +122,7 @@ export default function Students() {
       </PageTitle>
       <div className="card">
         <div className="row">
-          <a className="btn" href="/api/students/template.xlsx">Download XLSX template</a>
+          <a className="btn" href={authFileUrl("/api/students/template.xlsx")}>Download XLSX template</a>
           <input
             ref={fileRef}
             type="file"
