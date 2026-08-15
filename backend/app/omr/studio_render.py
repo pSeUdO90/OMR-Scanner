@@ -203,3 +203,87 @@ def generate_studio_sheet(config: dict) -> np.ndarray:
         else:
             _draw_digit_block(canvas, block, g, date=kind == "GRID_DATE")
     return canvas
+
+
+def _digit_role(block: dict) -> str | None:
+    text = " ".join(
+        str(block.get(key) or "")
+        for key in ("blockId", "dbColumnBinding", "label")
+    ).lower()
+    if "roll" in text:
+        return "roll"
+    if "test_id" in text or "testid" in text or "test id" in text:
+        return "test_id"
+    if "test_no" in text or "testno" in text or "test no" in text:
+        return "test_no"
+    if "date" in text or block.get("blockType") == "GRID_DATE":
+        return "date"
+    return None
+
+
+def _norm_pt(x_mm: float, y_mm: float, g: dict) -> tuple[float, float, float]:
+    r = (g["bubbleDiameterMm"] / 2) / min(g["pageWidthMm"], g["pageHeightMm"])
+    return x_mm / g["pageWidthMm"], y_mm / g["pageHeightMm"], r
+
+
+def _digit_grid_from_block(block: dict, g: dict) -> dict:
+    bubbles = []
+    rows = min(10, int(block["rows"]))
+    cols = int(block["cols"])
+    for col in range(cols):
+        for digit in range(rows):
+            x_mm, y_mm = _cell_center(block["col0"] + col, block["row0"] + digit, g)
+            x, y, r = _norm_pt(x_mm, y_mm, g)
+            bubbles.append({"col": col, "digit": str(digit % 10), "x": x, "y": y, "r": r})
+    return {"cols": cols, "bubbles": bubbles}
+
+
+def apply_studio_eval_layout(layout: dict) -> dict:
+    """Replace designed bubble maps with OMR Studio block positions."""
+    blocks = list(layout.get("studio_blocks") or [])
+    if not layout.get("studio") or not blocks:
+        return layout
+    g = _geo(layout)
+    questions = []
+    digit_maps: dict[str, dict] = {}
+    for raw in blocks:
+        block = {
+            **raw,
+            "col0": int(raw.get("col0") or 0),
+            "row0": int(raw.get("row0") or 0),
+            "cols": int(raw.get("cols") or 1),
+            "rows": int(raw.get("rows") or 1),
+        }
+        kind = block.get("blockType") or "GRID_DIGIT"
+        if kind == "GRID_MCQ":
+            options = str(block.get("options") or layout.get("options") or "ABCD")
+            start_q = int(block.get("startQ") or 1)
+            end_q = int(block.get("endQ") or start_q + int(block["rows"]) - 1)
+            row_count = min(int(block["rows"]), max(1, end_q - start_q + 1))
+            for row in range(row_count):
+                opts = []
+                for c, letter in enumerate(options):
+                    x_mm, y_mm = _cell_center(block["col0"] + 1 + c, block["row0"] + row, g)
+                    x, y, r = _norm_pt(x_mm, y_mm, g)
+                    opts.append({"label": letter, "x": x, "y": y, "r": r})
+                questions.append({"number": start_q + row, "options": opts})
+            continue
+        if kind in ("GRID_DIGIT", "GRID_DATE"):
+            role = _digit_role(block)
+            if not role and "roll" not in digit_maps:
+                role = "roll"
+            if role:
+                digit_maps[role] = _digit_grid_from_block(block, g)
+    if questions:
+        questions.sort(key=lambda item: item["number"])
+        layout["questions"] = questions
+        layout["total_questions"] = max(q["number"] for q in questions)
+    for key, grid in digit_maps.items():
+        layout[key] = grid
+    layout["page_width_mm"] = g["pageWidthMm"]
+    layout["page_height_mm"] = g["pageHeightMm"]
+    layout["page_width"] = max(1, int(round(g["pageWidthMm"] * DPI / MM_PER_INCH)))
+    layout["page_height"] = max(1, int(round(g["pageHeightMm"] * DPI / MM_PER_INCH)))
+    layout["studio_eval"] = True
+    return layout
+

@@ -496,3 +496,76 @@ def test_studio_layout_saves_mapping_json():
     assert client.delete(f"/api/layouts/{row['id']}").status_code == 200
     assert client.delete(f"/api/layouts/{clone_id}").status_code == 200
 
+
+def test_studio_layout_reads_seven_digit_roll():
+    import cv2
+    from app.omr.processor import evaluate_image, parse_layout
+    from app.omr.studio_render import generate_studio_sheet
+    from app.scoring import _roll_key, find_student_by_roll
+
+    config = {
+        "studio": True,
+        "name": "NEET UG 180Q",
+        "options": "ABCD",
+        "questions": [],
+        "studio_config": {"title": "NEET UG 180Q", "rollCols": 7},
+        "studio_geometry": {
+            "pageWidthMm": 210,
+            "pageHeightMm": 297,
+            "cellMm": 6.5,
+            "gridCols": 32,
+            "gridRows": 45,
+            "bubbleDiameterMm": 4.5,
+            "marginTopMm": 8,
+            "marginRightMm": 8,
+            "marginBottomMm": 8,
+            "marginLeftMm": 8,
+            "fiducialMm": 8,
+            "fiducialInsetMm": 5,
+        },
+        "studio_blocks": [
+            {
+                "blockType": "GRID_DIGIT",
+                "blockId": "roll_number_grid",
+                "dbColumnBinding": "candidates.roll_number",
+                "label": "Roll Number",
+                "col0": 24,
+                "row0": 4,
+                "cols": 7,
+                "rows": 10,
+            },
+            {
+                "blockType": "GRID_MCQ",
+                "blockId": "mcq_column_1",
+                "label": "Physics",
+                "col0": 3,
+                "row0": 16,
+                "cols": 5,
+                "rows": 8,
+                "options": "ABCD",
+                "startQ": 1,
+                "endQ": 8,
+            },
+        ],
+    }
+    image = generate_studio_sheet(config)
+    layout = parse_layout(json.dumps(config))
+    assert layout["roll"]["cols"] == 7
+    roll = "2400101"
+    h, w = image.shape[:2]
+    for bubble in layout["roll"]["bubbles"]:
+        if roll[int(bubble["col"])] == bubble["digit"]:
+            radius = max(4, int(bubble["r"] * min(w, h)))
+            cv2.circle(image, (int(bubble["x"] * w), int(bubble["y"] * h)), radius, (0, 0, 0), -1)
+    result = evaluate_image(image, layout)
+    assert result["roll"] == "2400101"
+    assert _roll_key("02400101") == _roll_key("2400101")
+    with SessionLocal() as db:
+        if not db.query(Student).filter(Student.roll_no == "2400101").first():
+            db.add(Student(roll_no="2400101", name="Aarav Mishra", gender="M", class_name="12", section="A", session="2026-27"))
+            db.commit()
+        found = find_student_by_roll(db, "02400101")
+        assert found is not None
+        assert found.roll_no == "2400101"
+
+
