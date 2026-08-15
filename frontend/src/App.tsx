@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { AuthUser, useAuth } from "./auth";
+import { brandingLogoUrl, LOGO_UPDATED_EVENT } from "./branding";
 import { NavIcon } from "./components/Icons";
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
@@ -41,6 +42,12 @@ function Guard({ tab, user, children }: { tab: string; user: AuthUser; children:
 
 export default function App() {
   const { user, ready, logout } = useAuth();
+  const [logoSrc, setLogoSrc] = useState(brandingLogoUrl());
+  useEffect(() => {
+    const refresh = () => setLogoSrc(brandingLogoUrl());
+    window.addEventListener(LOGO_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(LOGO_UPDATED_EVENT, refresh);
+  }, []);
   if (!ready) return <div className="login-screen"><p className="muted">Loading…</p></div>;
   if (!user) return <Login />;
   const home = NAV_ITEMS.find((item) => can(user, item.tab))?.to || "/";
@@ -48,7 +55,7 @@ export default function App() {
     <div className="shell">
       <nav className="nav">
         <div className="brand">
-          <img src="/logo.svg" alt="Gyana Vikash English Medium School" />
+          <img src={logoSrc} alt="Gyana Vikash English Medium School" />
           <h1>OMR Software</h1>
         </div>
         <div className="nav-links">

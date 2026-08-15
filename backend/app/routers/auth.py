@@ -1,14 +1,27 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from io import BytesIO
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+from PIL import Image
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import UPLOAD_DIR, get_db
 from ..models import AppUser, UserSession
 from ..security import create_session, get_current_user, hash_password, require_admin, verify_password
 from ..permissions import APP_TABS, load_role_permissions, permissions_for_user, save_role_permissions
-from ..settings_store import DEFAULT_PROCESSED_DIR, get_settings, processed_root
+from ..settings_store import (
+    ALLOWED_LOGO_TYPES,
+    DEFAULT_PROCESSED_DIR,
+    MAX_LOGO_BYTES,
+    get_settings,
+    processed_root,
+    resolve_logo_path,
+)
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -148,10 +161,11 @@ def delete_user(user_id: int, current: AppUser = Depends(require_admin), db: Ses
     return {"ok": True}
 
 
-@router.get("/settings")
-def read_settings(_: AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def _settings_body(db: Session) -> dict:
     row = get_settings(db)
     root = str(processed_root(db))
+    custom = bool((row.logo_path or "").strip() and Path(row.logo_path).exists())
+    rev = int(Path(row.logo_path).stat().st_mtime) if custom else 1
     return {
         "processed_images_dir": row.processed_images_dir or str(DEFAULT_PROCESSED_DIR),
         "resolved_dir": root,
@@ -160,7 +174,13 @@ def read_settings(_: AppUser = Depends(get_current_user), db: Session = Depends(
         "actions": ["view", "edit", "delete"],
         "roles": ["admin", "user"],
         "role_permissions": load_role_permissions(db),
+        "has_custom_logo": custom,
+        "logo_url": f"/api/branding/logo?v={rev}",
     }
+
+@router.get("/settings")
+def read_settings(_: AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _settings_body(db)
 
 
 @router.put("/settings")
@@ -169,18 +189,70 @@ def save_settings(payload: SettingsIn, _: AppUser = Depends(require_admin), db: 
     if payload.processed_images_dir is not None:
         path = payload.processed_images_dir.strip() or str(DEFAULT_PROCESSED_DIR)
         row.processed_images_dir = path
-    matrix = load_role_permissions(db)
     if payload.role_permissions is not None:
-        matrix = save_role_permissions(db, payload.role_permissions)
+        save_role_permissions(db, payload.role_permissions)
     else:
         db.commit()
-    root = processed_root(db)
-    return {
-        "processed_images_dir": row.processed_images_dir or str(DEFAULT_PROCESSED_DIR),
-        "resolved_dir": str(root),
-        "default_dir": str(DEFAULT_PROCESSED_DIR),
-        "tabs": [{"key": key, "label": label} for key, label in APP_TABS],
-        "actions": ["view", "edit", "delete"],
-        "roles": ["admin", "user"],
-        "role_permissions": matrix,
-    }
+    return _settings_body(db)
+
+
+@router.get("/branding/logo")
+def branding_logo(db: Session = Depends(get_db)):
+    path = resolve_logo_path(db)
+    media = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+    }.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path, media_type=media, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/settings/logo")
+async def upload_logo(file: UploadFile = File(...), _: AppUser = Depends(require_admin), db: Session = Depends(get_db)):
+    data = await file.read()
+    if len(data) > MAX_LOGO_BYTES:
+        raise HTTPException(400, "Logo must be under 1 MB")
+    ctype = (file.content_type or "").split(";")[0].strip().lower()
+    name = (file.filename or "logo.png").lower()
+    ext = ALLOWED_LOGO_TYPES.get(ctype)
+    if not ext:
+        for suffix in ALLOWED_LOGO_TYPES.values():
+            if name.endswith(suffix):
+                ext = suffix
+                break
+    if not ext:
+        raise HTTPException(400, "Use a PNG, JPG, WEBP, GIF, or SVG image under 1 MB")
+    if ext == ".svg":
+        text = data.decode("utf-8", errors="ignore").lstrip().lower()
+        if "<svg" not in text:
+            raise HTTPException(400, "That file is not a valid SVG logo")
+    else:
+        try:
+            Image.open(BytesIO(data)).verify()
+        except Exception as exc:
+            raise HTTPException(400, "Could not read that image") from exc
+    dest_dir = UPLOAD_DIR / "branding"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"logo-{uuid4().hex}{ext}"
+    dest.write_bytes(data)
+    row = get_settings(db)
+    old = Path(row.logo_path) if row.logo_path else None
+    row.logo_path = str(dest)
+    db.commit()
+    if old and old.exists() and old.parent == dest_dir and old != dest:
+        old.unlink(missing_ok=True)
+    return _settings_body(db)
+
+
+@router.delete("/settings/logo")
+def reset_logo(_: AppUser = Depends(require_admin), db: Session = Depends(get_db)):
+    row = get_settings(db)
+    old = Path(row.logo_path) if row.logo_path else None
+    row.logo_path = ""
+    db.commit()
+    if old and old.exists() and old.parent == (UPLOAD_DIR / "branding"):
+        old.unlink(missing_ok=True)
+    return _settings_body(db)

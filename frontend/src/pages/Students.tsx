@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, Student } from "../api";
-import { DeleteButton, ViewLink } from "../components/ActionButtons";
+import { DeleteButton, EditButton, ViewLink } from "../components/ActionButtons";
 import { BulkBar, SelectAllCell, SelectCell, setAll, toggleId } from "../components/BulkSelect";
 import { useConfirm } from "../components/ConfirmProvider";
 import PageTitle from "../components/PageTitle";
@@ -25,6 +25,7 @@ export default function Students() {
   const pendingFile = useRef<File | null>(null);
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [conflict, setConflict] = useState<{ existing: { roll_no: string; name: string; current_name: string }[]; newCount: number } | null>(null);
   const load = () => api.get("/api/students").then(setRows);
   useEffect(() => { load(); }, []);
@@ -44,7 +45,12 @@ export default function Students() {
     e.preventDefault();
     setErr("");
     try {
-      await api.post("/api/students", form);
+      if (editingId) {
+        await api.put(`/api/students/${editingId}`, form);
+        setEditingId(null);
+      } else {
+        await api.post("/api/students", form);
+      }
       setForm(empty);
       load();
     } catch (error) {
@@ -109,7 +115,7 @@ export default function Students() {
         {err && <p className="error">{err}</p>}
       </div>
       <form className="card" onSubmit={onSubmit}>
-        <h3>Add student</h3>
+        <h3>{editingId ? "Edit student" : "Add student"}</h3>
         <div className="row">
           {(["roll_no", "name", "gender", "class_name", "section", "session"] as const).map((key) => (
             <label key={key}>
@@ -125,7 +131,19 @@ export default function Students() {
               )}
             </label>
           ))}
-          <button type="submit">Save student</button>
+          <button type="submit">{editingId ? "Update student" : "Save student"}</button>
+          {editingId && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setEditingId(null);
+                setForm(empty);
+              }}
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </form>
       <div className="card">
@@ -160,6 +178,22 @@ export default function Students() {
                 <td>{s.roll_no}</td><td>{s.name}</td><td>{s.gender}</td><td>{s.class_name}</td><td>{s.section}</td><td>{s.session}</td>
                 <td className="row-actions">
                   <ViewLink to={`/students/${s.id}`}>View</ViewLink>
+                  <EditButton
+                    onClick={() => {
+                      setEditingId(s.id);
+                      setForm({
+                        roll_no: s.roll_no,
+                        name: s.name,
+                        gender: s.gender || "M",
+                        class_name: s.class_name,
+                        section: s.section,
+                        session: s.session,
+                      });
+                      setErr("");
+                    }}
+                  >
+                    Edit
+                  </EditButton>
                   <DeleteButton onClick={async () => {
                     const ok = await confirm({ title: "Delete student", message: `Delete “${s.name}”? This cannot be undone.` });
                     if (!ok) return;

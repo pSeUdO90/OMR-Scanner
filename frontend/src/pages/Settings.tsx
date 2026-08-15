@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { brandingLogoUrl, notifyLogoUpdated } from "../branding";
 import PageTitle from "../components/PageTitle";
 
 type TabDef = { key: string; label: string };
@@ -14,6 +15,9 @@ export default function Settings() {
   const [actions, setActions] = useState<string[]>(["view", "edit", "delete"]);
   const [roles, setRoles] = useState<string[]>(["admin", "user"]);
   const [matrix, setMatrix] = useState<RoleMatrix>({});
+  const [logoUrl, setLogoUrl] = useState(brandingLogoUrl());
+  const [hasCustomLogo, setHasCustomLogo] = useState(false);
+  const logoRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const admin = user?.role === "admin";
@@ -26,6 +30,8 @@ export default function Settings() {
       setActions((row.actions as string[]) || ["view", "edit", "delete"]);
       setRoles((row.roles as string[]) || ["admin", "user"]);
       setMatrix((row.role_permissions as RoleMatrix) || {});
+      setHasCustomLogo(Boolean(row.has_custom_logo));
+      setLogoUrl(String(row.logo_url || brandingLogoUrl()));
     });
   };
   useEffect(() => { load(); }, []);
@@ -74,6 +80,70 @@ export default function Settings() {
       <PageTitle icon="settings" subtitle="Processed OMR images and the view / edit / delete rights for each tab.">
         Settings
       </PageTitle>
+      <div className="card">
+        <h3>Software Logo</h3>
+        <p className="muted">PNG, JPG, WEBP, GIF, or SVG. Maximum size 1 MB.</p>
+        <div className="logo-settings">
+          <img src={logoUrl} alt="Current software logo" className="logo-preview" />
+          <div className="row">
+            <input
+              ref={logoRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                setErr("");
+                setMsg("");
+                if (file.size > 1024 * 1024) {
+                  setErr("Logo must be under 1 MB");
+                  return;
+                }
+                const data = new FormData();
+                data.append("file", file);
+                try {
+                  const saved = await api.post("/api/settings/logo", data);
+                  setHasCustomLogo(Boolean(saved.has_custom_logo));
+                  setLogoUrl(String(saved.logo_url || brandingLogoUrl()));
+                  notifyLogoUpdated();
+                  setMsg("Software logo updated.");
+                } catch (error) {
+                  setErr(error instanceof Error ? error.message : "Could not update logo");
+                }
+              }}
+            />
+            {admin && (
+              <button type="button" onClick={() => logoRef.current?.click()}>
+                Change Logo
+              </button>
+            )}
+            {admin && hasCustomLogo && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={async () => {
+                  setErr("");
+                  setMsg("");
+                  try {
+                    const saved = await api.del("/api/settings/logo");
+                    setHasCustomLogo(Boolean(saved.has_custom_logo));
+                    setLogoUrl(String(saved.logo_url || brandingLogoUrl()));
+                    notifyLogoUpdated();
+                    setMsg("Default logo restored.");
+                  } catch (error) {
+                    setErr(error instanceof Error ? error.message : "Could not restore logo");
+                  }
+                }}
+              >
+                Restore Default
+              </button>
+            )}
+          </div>
+        </div>
+        {!admin && <p className="muted">Only an admin can change the logo.</p>}
+      </div>
       <form className="card" onSubmit={saveFolder}>
         <h3>Processed Images</h3>
         <label>

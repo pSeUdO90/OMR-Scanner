@@ -47,6 +47,8 @@ def _ensure_columns() -> None:
         setting_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(app_settings)")).fetchall()}
         if setting_cols and "role_permissions_json" not in setting_cols:
             conn.execute(text("ALTER TABLE app_settings ADD COLUMN role_permissions_json TEXT DEFAULT '{}'"))
+        if setting_cols and "logo_path" not in setting_cols:
+            conn.execute(text("ALTER TABLE app_settings ADD COLUMN logo_path VARCHAR(500) DEFAULT ''"))
 
 
 def init_db() -> None:
@@ -75,7 +77,7 @@ app.include_router(subjects.router)
 app.include_router(layouts.router)
 app.include_router(exams.router)
 
-PUBLIC_API = {"/api/health", "/api/auth/login"}
+PUBLIC_API = {"/api/health", "/api/auth/login", "/api/branding/logo"}
 
 
 @app.middleware("http")

@@ -46,6 +46,7 @@ class AppSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     processed_images_dir: Mapped[str] = mapped_column(String(500), default="")
     role_permissions_json: Mapped[str] = mapped_column(Text, default="{}")
+    logo_path: Mapped[str] = mapped_column(String(500), default="")
 
 
 class Student(Base):

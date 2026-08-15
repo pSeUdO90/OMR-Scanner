@@ -49,6 +49,9 @@ def update_student(student_id: int, payload: StudentIn, db: Session = Depends(ge
     student = db.get(Student, student_id)
     if not student:
         raise HTTPException(404, "Student not found")
+    taken = db.query(Student).filter(Student.roll_no == payload.roll_no, Student.id != student_id).first()
+    if taken:
+        raise HTTPException(400, "Roll number already exists")
     for key, value in payload.model_dump().items():
         setattr(student, key, value)
     db.commit()

@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../auth";
+import { brandingLogoUrl } from "../branding";
 
 export default function Login() {
   const { login } = useAuth();
@@ -18,7 +19,7 @@ export default function Login() {
   return (
     <div className="login-screen">
       <form className="card login-card" onSubmit={onSubmit}>
-        <img src="/logo.svg" alt="Gyana Vikash English Medium School" className="login-logo" />
+        <img src={brandingLogoUrl(1)} alt="Gyana Vikash English Medium School" className="login-logo" />
         <h1>OMR Software</h1>
         <p className="muted">Sign in to continue.</p>
         <label>

@@ -66,3 +66,43 @@ def test_role_permissions_matrix():
     assert saved.json()["role_permissions"]["user"]["students"] == ["view"]
     me = client.get("/api/auth/me").json()
     assert "view" in me["permissions"]["settings"]
+
+
+def test_logo_upload_under_one_mb_and_public_fetch():
+    from io import BytesIO
+    from PIL import Image
+
+    client = TestClient(app)
+    buf = BytesIO()
+    Image.new("RGB", (40, 24), "#2E7D32").save(buf, "PNG")
+    uploaded = client.post("/api/settings/logo", files={"file": ("logo.png", buf.getvalue(), "image/png")})
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.json()["has_custom_logo"] is True
+    raw = RawClient(app)
+    logo = raw.get("/api/branding/logo")
+    assert logo.status_code == 200
+    assert logo.content[:8] == b"\x89PNG\r\n\x1a\n"
+    too_big = client.post("/api/settings/logo", files={"file": ("huge.png", b"x" * (1024 * 1024 + 10), "image/png")})
+    assert too_big.status_code == 400
+
+
+def test_edit_student_updates_fields():
+    client = TestClient(app)
+    created = client.post(
+        "/api/students",
+        json={"roll_no": "EDIT001", "name": "Old Name", "gender": "M", "class_name": "10", "section": "A", "session": "2025-26"},
+    )
+    if created.status_code == 400:
+        rows = client.get("/api/students").json()
+        student = next(item for item in rows if item["roll_no"] == "EDIT001")
+    else:
+        assert created.status_code == 200, created.text
+        student = created.json()
+    updated = client.put(
+        f"/api/students/{student['id']}",
+        json={"roll_no": "EDIT001", "name": "New Name", "gender": "F", "class_name": "11", "section": "B", "session": "2026-27"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "New Name"
+    assert updated.json()["class_name"] == "11"
+    assert updated.json()["gender"] == "F"
