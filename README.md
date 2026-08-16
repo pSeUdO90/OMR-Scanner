@@ -17,6 +17,19 @@ cd frontend && npm run dev
 
 Open http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 
+Login: `admin` / `admin`.
+
+## Host on a domain
+
+This is not a static site. Use a VPS and Docker so the API and OMR engine run behind HTTPS.
+
+See **[DEPLOY.md](DEPLOY.md)**. Short version:
+
+1. Create an A record from `omr.yourdomain.com` to the VPS IP.
+2. Copy `deploy/env.example` to `.env` and set `OMR_SITE=omr.yourdomain.com`.
+3. Run `./scripts/deploy.sh`.
+4. Open `https://omr.yourdomain.com`.
+
 ## Workflow
 
 1. **Students** — add rows or upload an XLSX (`Roll No`, `Student Name`, `Gender`, `Class`, `Section`, `Session`).

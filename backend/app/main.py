@@ -1,8 +1,11 @@
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -64,6 +67,9 @@ def init_db() -> None:
 init_db()
 
 app = FastAPI(title="OMR Software", version="1.0.0")
+_hosts = os.environ.get("OMR_ALLOWED_HOSTS", "*").strip()
+if _hosts and _hosts != "*":
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[h.strip() for h in _hosts.split(",") if h.strip()])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
