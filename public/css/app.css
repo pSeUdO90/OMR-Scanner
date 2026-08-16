@@ -1,0 +1,10 @@
+.form-control, .form-select, .form-control:focus, .form-select:focus {
+  background: #061e32;
+  color: var(--ink);
+  border-color: #14505c;
+}
+.table { color: var(--ink); --bs-table-bg: transparent; }
+.table > :not(caption) > * > * { background: transparent; color: inherit; border-color: #14505c; }
+.modal-content { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+html, body { overflow: hidden; height: 100%; }
+#app { height: 100%; }
