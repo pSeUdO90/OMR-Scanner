@@ -1,0 +1,43 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      OMR_DATA_DIR: /data
+      OMR_UPLOAD_DIR: /uploads
+      OMR_ALLOWED_HOSTS: ${OMR_ALLOWED_HOSTS:-*}
+    volumes:
+      - omr-data:/data
+      - omr-uploads:/uploads
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      OMR_SITE: ${OMR_SITE:-:80}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  omr-data:
+  omr-uploads:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,15 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$OMR_SITE::80} {
+	encode gzip zstd
+	request_body {
+		max_size 128MB
+	}
+	reverse_proxy app:8000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}
