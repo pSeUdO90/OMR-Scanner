@@ -46,7 +46,17 @@ def _sample_rev(path: str) -> int:
         return 0
 
 
-def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> LayoutOut:
+def _in_use_layout_ids(db: Session) -> set[int]:
+    return {row[0] for row in db.query(Exam.layout_id).distinct().all()}
+
+
+def _layout_out(
+    row: OmrLayout,
+    *,
+    with_image: bool = False,
+    image=None,
+    in_use_ids: set[int] | None = None,
+) -> LayoutOut:
     config = json.loads(row.config_json)
     item = LayoutOut.model_validate(row)
     item.preview = layout_preview(
@@ -58,8 +68,11 @@ def _layout_out(row: OmrLayout, *, with_image: bool = False, image=None) -> Layo
     item.has_sample = bool((getattr(row, "sample_path", "") or "").strip() and Path(row.sample_path).exists())
     item.is_studio = bool(config.get("studio"))
     item.is_finalized = bool(getattr(row, "is_finalized", True) or row.is_builtin)
-    session = object_session(row)
-    item.in_use = bool(session and _layout_in_use(session, row.id))
+    if in_use_ids is not None:
+        item.in_use = row.id in in_use_ids
+    else:
+        session = object_session(row)
+        item.in_use = bool(session and _layout_in_use(session, row.id))
     item.sample_rev = _sample_rev(getattr(row, "sample_path", "") or "")
     item.studio_config = config.get("studio_config") or {}
     item.studio_geometry = config.get("studio_geometry") or {}
@@ -114,7 +127,9 @@ def _write_designed_sample(slug: str, config: dict) -> str:
 
 @router.get("", response_model=list[LayoutOut])
 def list_layouts(db: Session = Depends(get_db)):
-    return [_layout_out(row) for row in db.query(OmrLayout).filter(~OmrLayout.slug.in_(RETIRED_LAYOUT_SLUGS)).order_by(OmrLayout.id).all()]
+    in_use_ids = _in_use_layout_ids(db)
+    rows = db.query(OmrLayout).filter(~OmrLayout.slug.in_(RETIRED_LAYOUT_SLUGS)).order_by(OmrLayout.id).all()
+    return [_layout_out(row, in_use_ids=in_use_ids) for row in rows]
 
 
 @router.get("/predefined-blocks")

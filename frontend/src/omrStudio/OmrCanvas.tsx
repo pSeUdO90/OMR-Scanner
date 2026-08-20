@@ -1,4 +1,4 @@
-import { PointerEvent, useRef } from "react";
+import { memo, PointerEvent, useCallback, useMemo, useRef } from "react";
 import {
   BUBBLE_STROKE_PT,
   cellCenter,
@@ -43,7 +43,7 @@ export default function OmrCanvas({
   const g = geometry;
   const stroke = BUBBLE_STROKE_PT * PT_TO_MM;
   const radius = g.bubbleDiameterMm / 2;
-  const rows = timingRows(g, bubbleRowsForBlocks(blocks));
+  const rows = useMemo(() => timingRows(g, bubbleRowsForBlocks(blocks)), [g, blocks]);
   const drag = useRef<{
     id: string;
     pointerId: number;
@@ -52,40 +52,46 @@ export default function OmrCanvas({
     moved: boolean;
   } | null>(null);
 
-  const onPointerDown = (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
-    const svg = event.currentTarget.ownerSVGElement;
-    if (!svg) return;
-    event.stopPropagation();
-    event.preventDefault();
-    const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
-    const cell = mmToCell(xMm, yMm, g);
-    drag.current = {
-      id: block.id,
-      pointerId: event.pointerId,
-      offsetCol: cell.col - block.col0,
-      offsetRow: cell.row - block.row0,
-      moved: false,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    onSelect(block.id);
-  };
+  const onPointerDown = useCallback(
+    (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
+      const svg = event.currentTarget.ownerSVGElement;
+      if (!svg) return;
+      event.stopPropagation();
+      event.preventDefault();
+      const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
+      const cell = mmToCell(xMm, yMm, g);
+      drag.current = {
+        id: block.id,
+        pointerId: event.pointerId,
+        offsetCol: cell.col - block.col0,
+        offsetRow: cell.row - block.row0,
+        moved: false,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      onSelect(block.id);
+    },
+    [g, onSelect],
+  );
 
-  const onPointerMove = (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
-    const session = drag.current;
-    if (!session || session.id !== block.id || session.pointerId !== event.pointerId) return;
-    const svg = event.currentTarget.ownerSVGElement;
-    if (!svg) return;
-    const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
-    const cell = mmToCell(xMm, yMm, g);
-    const next = clampBlockOrigin(cell.col - session.offsetCol, cell.row - session.offsetRow, block.cols, block.rows, g);
-    if (next.col0 === block.col0 && next.row0 === block.row0) return;
-    session.moved = true;
-    onMove(block.id, next.col0, next.row0);
-  };
+  const onPointerMove = useCallback(
+    (event: PointerEvent<SVGGElement>, block: StudioBlock) => {
+      const session = drag.current;
+      if (!session || session.id !== block.id || session.pointerId !== event.pointerId) return;
+      const svg = event.currentTarget.ownerSVGElement;
+      if (!svg) return;
+      const { xMm, yMm } = clientToMm(svg, event.clientX, event.clientY);
+      const cell = mmToCell(xMm, yMm, g);
+      const next = clampBlockOrigin(cell.col - session.offsetCol, cell.row - session.offsetRow, block.cols, block.rows, g);
+      if (next.col0 === block.col0 && next.row0 === block.row0) return;
+      session.moved = true;
+      onMove(block.id, next.col0, next.row0);
+    },
+    [g, onMove],
+  );
 
-  const endDrag = (event: PointerEvent<SVGGElement>) => {
+  const endDrag = useCallback((event: PointerEvent<SVGGElement>) => {
     if (drag.current?.pointerId === event.pointerId) drag.current = null;
-  };
+  }, []);
 
   return (
     <svg
@@ -97,6 +103,39 @@ export default function OmrCanvas({
       data-omr-page="a4"
     >
       <rect x="0" y="0" width={g.pageWidthMm} height={g.pageHeightMm} fill="#ffffff" />
+      <Fiducials geometry={g} />
+      <TimingMarks rows={rows} geometry={g} />
+      {showGrid && <GridCells geometry={g} />}
+      <text x={g.pageWidthMm / 2} y="18" textAnchor="middle" fontSize="4.2" fontFamily="Roboto, Arial, sans-serif" fill="#000">
+        {title}
+      </text>
+      <text x={g.pageWidthMm / 2} y="23" textAnchor="middle" fontSize="2.4" fontFamily="Roboto, Arial, sans-serif" fill="#000">
+        {g.pageWidthMm}×{g.pageHeightMm} mm · {g.cellMm} mm grid · {g.bubbleDiameterMm} mm bubbles
+      </text>
+      {blocks.map((block) => (
+        <BlockGroup
+          key={block.id}
+          block={block}
+          selected={selectedId === block.id}
+          geometry={g}
+          stroke={stroke}
+          radius={radius}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onDragEnd={endDrag}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * The sheet holds ~2,400 SVG nodes, so each layer is memoized separately:
+ * editing a title or dragging one block then leaves the other layers alone.
+ */
+const Fiducials = memo(function Fiducials({ geometry: g }: { geometry: SheetGeometry }) {
+  return (
+    <>
       {(["TL", "TR", "BL", "BR"] as const).map((id) => {
         const box = fiducialRect(id, g);
         return (
@@ -111,89 +150,131 @@ export default function OmrCanvas({
           />
         );
       })}
-      {rows.map((row) =>
-        (["left", "right"] as const).map((side) => {
-          const mark = timingMark(side, row, g);
-          return (
-            <rect
-              key={`${side}-${row}`}
-              className="omr-timing"
-              x={mark.xMm}
-              y={mark.yMm}
-              width={mark.widthMm}
-              height={mark.heightMm}
-              fill="#000000"
-            />
-          );
-        })
-      )}
-      {showGrid &&
-        Array.from({ length: g.gridCols * g.gridRows }, (_, i) => {
-          const col = i % g.gridCols;
-          const row = Math.floor(i / g.gridCols);
-          const origin = cellOrigin(col, row, g);
-          return (
-            <rect
-              key={`g-${col}-${row}`}
-              className="omr-grid-cell"
-              x={origin.xMm}
-              y={origin.yMm}
-              width={g.cellMm}
-              height={g.cellMm}
-              fill="none"
-              stroke="#10BBC3"
-              strokeWidth="0.12"
-            />
-          );
-        })}
-      <text x={g.pageWidthMm / 2} y="18" textAnchor="middle" fontSize="4.2" fontFamily="Roboto, Arial, sans-serif" fill="#000">
-        {title}
-      </text>
-      <text x={g.pageWidthMm / 2} y="23" textAnchor="middle" fontSize="2.4" fontFamily="Roboto, Arial, sans-serif" fill="#000">
-        {g.pageWidthMm}×{g.pageHeightMm} mm · {g.cellMm} mm grid · {g.bubbleDiameterMm} mm bubbles
-      </text>
-      {blocks.map((block) => (
-        <g
-          key={block.id}
-          data-block-id={block.blockId}
-          className={selectedId === block.id ? "omr-block selected" : "omr-block"}
-          onPointerDown={(event) => onPointerDown(event, block)}
-          onPointerMove={(event) => onPointerMove(event, block)}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <rect
-            x={cellOrigin(block.col0, block.row0, g).xMm}
-            y={cellOrigin(block.col0, block.row0, g).yMm}
-            width={block.cols * g.cellMm}
-            height={block.rows * g.cellMm}
-            fill={selectedId === block.id ? "rgba(16,187,195,0.08)" : "transparent"}
-            stroke={selectedId === block.id ? "#10BBC3" : "none"}
-            strokeWidth="0.35"
-            className="omr-block-hit"
-          />
-          <text
-            x={cellOrigin(block.col0, block.row0, g).xMm}
-            y={cellOrigin(block.col0, block.row0, g).yMm - 3.2}
-            fontSize="2.2"
-            fontFamily="Roboto, Arial, sans-serif"
-            fill="#000"
-          >
-            {block.label}
-          </text>
-          {block.blockType === "GRID_MCQ" ? (
-            <McqBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
-          ) : block.blockType === "GRID_NAME" ? (
-            <NameBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
-          ) : (
-            <DigitBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
-          )}
-        </g>
-      ))}
-    </svg>
+    </>
   );
-}
+});
+
+const TimingMarks = memo(
+  function TimingMarks({ rows, geometry: g }: { rows: number[]; geometry: SheetGeometry }) {
+    return (
+      <>
+        {rows.map((row) =>
+          (["left", "right"] as const).map((side) => {
+            const mark = timingMark(side, row, g);
+            return (
+              <rect
+                key={`${side}-${row}`}
+                className="omr-timing"
+                x={mark.xMm}
+                y={mark.yMm}
+                width={mark.widthMm}
+                height={mark.heightMm}
+                fill="#000000"
+              />
+            );
+          })
+        )}
+      </>
+    );
+  },
+  (prev, next) =>
+    prev.geometry === next.geometry &&
+    prev.rows.length === next.rows.length &&
+    prev.rows.every((row, i) => row === next.rows[i]),
+);
+
+const GridCells = memo(function GridCells({ geometry: g }: { geometry: SheetGeometry }) {
+  return (
+    <>
+      {Array.from({ length: g.gridCols * g.gridRows }, (_, i) => {
+        const col = i % g.gridCols;
+        const row = Math.floor(i / g.gridCols);
+        const origin = cellOrigin(col, row, g);
+        return (
+          <rect
+            key={`g-${col}-${row}`}
+            className="omr-grid-cell"
+            x={origin.xMm}
+            y={origin.yMm}
+            width={g.cellMm}
+            height={g.cellMm}
+            fill="none"
+            stroke="#10BBC3"
+            strokeWidth="0.12"
+          />
+        );
+      })}
+    </>
+  );
+});
+
+const BlockGroup = memo(function BlockGroup({
+  block,
+  selected,
+  geometry: g,
+  stroke,
+  radius,
+  onPointerDown,
+  onPointerMove,
+  onDragEnd,
+}: {
+  block: StudioBlock;
+  selected: boolean;
+  geometry: SheetGeometry;
+  stroke: number;
+  radius: number;
+  onPointerDown: (event: PointerEvent<SVGGElement>, block: StudioBlock) => void;
+  onPointerMove: (event: PointerEvent<SVGGElement>, block: StudioBlock) => void;
+  onDragEnd: (event: PointerEvent<SVGGElement>) => void;
+}) {
+  const origin = cellOrigin(block.col0, block.row0, g);
+  const handleDown = useCallback(
+    (event: PointerEvent<SVGGElement>) => onPointerDown(event, block),
+    [onPointerDown, block],
+  );
+  const handleMove = useCallback(
+    (event: PointerEvent<SVGGElement>) => onPointerMove(event, block),
+    [onPointerMove, block],
+  );
+  return (
+    <g
+      data-block-id={block.blockId}
+      className={selected ? "omr-block selected" : "omr-block"}
+      onPointerDown={handleDown}
+      onPointerMove={handleMove}
+      onPointerUp={onDragEnd}
+      onPointerCancel={onDragEnd}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <rect
+        x={origin.xMm}
+        y={origin.yMm}
+        width={block.cols * g.cellMm}
+        height={block.rows * g.cellMm}
+        fill={selected ? "rgba(16,187,195,0.08)" : "transparent"}
+        stroke={selected ? "#10BBC3" : "none"}
+        strokeWidth="0.35"
+        className="omr-block-hit"
+      />
+      <text
+        x={origin.xMm}
+        y={origin.yMm - 3.2}
+        fontSize="2.2"
+        fontFamily="Roboto, Arial, sans-serif"
+        fill="#000"
+      >
+        {block.label}
+      </text>
+      {block.blockType === "GRID_MCQ" ? (
+        <McqBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+      ) : block.blockType === "GRID_NAME" ? (
+        <NameBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+      ) : (
+        <DigitBubbles block={block} stroke={stroke} radius={radius} geometry={g} />
+      )}
+    </g>
+  );
+});
 
 function DigitBubbles({
   block,

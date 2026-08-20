@@ -49,6 +49,27 @@ def _ensure_columns() -> None:
             conn.execute(text("ALTER TABLE app_settings ADD COLUMN role_permissions_json TEXT DEFAULT '{}'"))
         if setting_cols and "logo_path" not in setting_cols:
             conn.execute(text("ALTER TABLE app_settings ADD COLUMN logo_path VARCHAR(500) DEFAULT ''"))
+        _ensure_indexes(conn)
+
+
+# Foreign keys that routers filter on. create_all() skips tables that already
+# exist, so databases created before these indexes need them added here.
+FK_INDEXES = (
+    ("ix_exams_layout_id", "exams", "layout_id"),
+    ("ix_exam_sheets_exam_id", "exam_sheets", "exam_id"),
+    ("ix_exam_sheets_student_id", "exam_sheets", "student_id"),
+    ("ix_exam_subject_maps_exam_id", "exam_subject_maps", "exam_id"),
+    ("ix_exam_subject_maps_subject_id", "exam_subject_maps", "subject_id"),
+    ("ix_sheet_question_results_sheet_id", "sheet_question_results", "sheet_id"),
+    ("ix_user_sessions_user_id", "user_sessions", "user_id"),
+)
+
+
+def _ensure_indexes(conn) -> None:
+    tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+    for name, table, column in FK_INDEXES:
+        if table in tables:
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({column})"))
 
 
 def init_db() -> None:

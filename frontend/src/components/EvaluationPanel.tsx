@@ -97,6 +97,17 @@ export default function EvaluationPanel({
     return [{ title: "All questions", questions: Array.from({ length: total }, (_, i) => i + 1) }];
   }, [exam.subject_maps, total]);
 
+  // Every unmatched row renders the same student list, so build the options once.
+  const studentOptions = useMemo(
+    () =>
+      students.map((st) => (
+        <option key={st.id} value={st.id}>
+          {st.roll_no} — {st.name}
+        </option>
+      )),
+    [students],
+  );
+
   const filled = Array.from({ length: total }, (_, i) => answers[String(i + 1)]).filter((letter) => letter && "ABCD".includes(letter)).length;
   const keyComplete = total > 0 && filled === total;
   const matched = sheets.filter((s) => s.status !== "unmatched");
@@ -478,11 +489,7 @@ export default function EvaluationPanel({
                       onChange={(e) => setAssigning({ ...assigning, [s.id]: Number(e.target.value) })}
                     >
                       <option value="">Select student</option>
-                      {students.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          {st.roll_no} — {st.name}
-                        </option>
-                      ))}
+                      {studentOptions}
                     </select>
                     <button
                       type="button"

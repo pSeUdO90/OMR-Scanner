@@ -507,12 +507,16 @@ def test_studio_layout_saves_mapping_json():
 
 
 def test_import_omr_json_creates_studio_layout():
+    from uuid import uuid4
+
     client = TestClient(app)
+    # Unique title so the suffix assertions hold no matter what the database holds.
+    title = f"Imported Snapshot {uuid4().hex[:8]}"
     snapshot = {
         "kind": "gyana-omr-studio",
         "version": 1,
         "config": {
-            "title": "Imported Snapshot",
+            "title": title,
             "questionCount": 40,
             "questionColumns": 2,
             "optionSet": "ABCD",
@@ -556,7 +560,7 @@ def test_import_omr_json_creates_studio_layout():
     )
     assert created.status_code == 200, created.text
     row = created.json()
-    assert row["name"] == "Imported Snapshot"
+    assert row["name"] == title
     assert row["is_studio"] is True
     assert row["total_questions"] == 40
     assert row["studio_blocks"][0]["blockId"] == "roll_number_grid"
@@ -565,7 +569,7 @@ def test_import_omr_json_creates_studio_layout():
         files={"file": ("layout.json", json.dumps(snapshot), "application/json")},
     )
     assert again.status_code == 200, again.text
-    assert again.json()["name"] == "Imported Snapshot import"
+    assert again.json()["name"] == f"{title} import"
     mapping_only = {
         "documentMetadata": {
             "pageSize": {"widthMm": 210, "heightMm": 297},
@@ -599,6 +603,8 @@ def test_import_omr_json_creates_studio_layout():
         files={"file": ("empty.json", json.dumps({"hello": 1}), "application/json")},
     )
     assert empty.status_code == 400
+    for layout_id in (row["id"], again.json()["id"], mapped.json()["id"]):
+        assert client.delete(f"/api/layouts/{layout_id}").status_code == 200
 
 
 def test_studio_layout_reads_seven_digit_roll():
