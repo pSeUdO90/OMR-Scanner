@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
+from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
 from .models import Exam, ExamSheet, SheetQuestionResult, Student
@@ -126,11 +127,13 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
     max_score = 0.0
 
     total_q = exam.layout.total_questions if exam.layout else max((int(k) for k in key), default=0)
+    grace = grace_questions(exam)
+    rows: list[dict] = []
     for q in range(1, total_q + 1):
         marked = (answers.get(str(q)) or "").strip().upper()
         correct = (key.get(str(q)) or "").strip().upper()
         mapping = subject_for_question(exam, q)
-        if q in grace_questions(exam):
+        if q in grace:
             rwl = "R"
             right += 1
             score += exam.correct_marks
@@ -152,16 +155,20 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
             score += exam.wrong_marks
         if correct:
             max_score += exam.correct_marks
-        db.add(
-            SheetQuestionResult(
-                sheet_id=sheet.id,
-                question_no=q,
-                subject_id=mapping.subject_id if mapping else None,
-                marked=marked,
-                correct=correct,
-                rwl=rwl,
-            )
+        rows.append(
+            {
+                "sheet_id": sheet.id,
+                "question_no": q,
+                "subject_id": mapping.subject_id if mapping else None,
+                "marked": marked,
+                "correct": correct,
+                "rwl": rwl,
+            }
         )
+    # One statement for the whole sheet: the ORM needs the generated primary key
+    # of every row, so add() emits an INSERT per question instead.
+    if rows:
+        db.execute(insert(SheetQuestionResult), rows)
 
     sheet.right_count = right
     sheet.wrong_count = wrong
@@ -181,10 +188,11 @@ def rescore_stored_sheets(db: Session, exam: Exam) -> None:
 
 
 def rwl_bucket(rows: list[SheetQuestionResult], exam: Exam, name: str, subject_id, start_q: int, end_q: int) -> dict:
-    right = sum(1 for r in rows if r.rwl == "R")
-    wrong = sum(1 for r in rows if r.rwl == "W")
-    left = sum(1 for r in rows if r.rwl == "L")
-    invalid = sum(1 for r in rows if r.rwl == "I")
+    tally = {"R": 0, "W": 0, "L": 0, "I": 0}
+    for row in rows:
+        if row.rwl in tally:
+            tally[row.rwl] += 1
+    right, wrong, left, invalid = tally["R"], tally["W"], tally["L"], tally["I"]
     total = len(rows)
     attempted = right + wrong + invalid
     score = right * exam.correct_marks + wrong * exam.wrong_marks + left * exam.unattempted_marks + invalid * exam.wrong_marks
@@ -207,15 +215,33 @@ def rwl_bucket(rows: list[SheetQuestionResult], exam: Exam, name: str, subject_i
     }
 
 
+def _mapping_slots(mappings: list) -> dict[int, list[int]]:
+    """Map a question number to the mappings that cover it, built once."""
+    slots: dict[int, list[int]] = {}
+    for index, mapping in enumerate(mappings):
+        for q in range(mapping.start_q, mapping.end_q + 1):
+            slots.setdefault(q, []).append(index)
+    return slots
+
+
+def _split_by_mapping(rows: list[SheetQuestionResult], mappings: list, slots: dict[int, list[int]]) -> list[list]:
+    subsets: list[list] = [[] for _ in mappings]
+    for row in rows:
+        for index in slots.get(row.question_no, ()):
+            subsets[index].append(row)
+    return subsets
+
+
 def build_analytics(exam: Exam) -> dict:
     sheets = [s for s in exam.sheets if s.status in ("evaluated", "unmatched")]
     results = []
+    mappings = sorted(exam.subject_maps, key=lambda m: m.start_q)
+    slots = _mapping_slots(mappings)
     for sheet in sheets:
         student = sheet.student
         subjects = []
         qrows = sheet.question_results
-        for mapping in sorted(exam.subject_maps, key=lambda m: m.start_q):
-            subset = [r for r in qrows if mapping.start_q <= r.question_no <= mapping.end_q]
+        for mapping, subset in zip(mappings, _split_by_mapping(qrows, mappings, slots)):
             subjects.append(
                 rwl_bucket(
                     subset,
@@ -256,8 +282,7 @@ def build_analytics(exam: Exam) -> dict:
     all_rows = [q for s in sheets for q in s.question_results]
     overall = rwl_bucket(all_rows, exam, "Overall", None, 1, exam.layout.total_questions if exam.layout else 0)
     subject_stats = []
-    for mapping in sorted(exam.subject_maps, key=lambda m: m.start_q):
-        subset = [r for r in all_rows if mapping.start_q <= r.question_no <= mapping.end_q]
+    for mapping, subset in zip(mappings, _split_by_mapping(all_rows, mappings, slots)):
         subject_stats.append(
             rwl_bucket(subset, exam, mapping.subject.name, mapping.subject_id, mapping.start_q, mapping.end_q)
         )

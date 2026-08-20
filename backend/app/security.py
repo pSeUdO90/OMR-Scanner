@@ -39,10 +39,12 @@ def create_session(db: Session, user: AppUser) -> str:
 def user_from_token(db: Session, token: str | None) -> AppUser | None:
     if not token:
         return None
-    session = db.query(UserSession).filter(UserSession.token == token).one_or_none()
-    if not session:
-        return None
-    user = db.query(AppUser).filter(AppUser.id == session.user_id).one_or_none()
+    user = (
+        db.query(AppUser)
+        .join(UserSession, UserSession.user_id == AppUser.id)
+        .filter(UserSession.token == token)
+        .one_or_none()
+    )
     if not user or not user.is_active:
         return None
     return user

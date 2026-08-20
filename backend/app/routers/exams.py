@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from PIL import Image
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import UPLOAD_DIR, get_db
 from ..models import Exam, ExamSheet, ExamSubjectMap, OmrLayout, Student, Subject
@@ -95,18 +95,22 @@ def _exam_analysis(exam: Exam) -> list[dict]:
     return analyze_layout_config(layout, img)
 
 
-def _load_exam(db: Session, exam_id: int) -> Exam:
-    exam = (
-        db.query(Exam)
-        .options(
-            joinedload(Exam.layout),
-            joinedload(Exam.subject_maps).joinedload(ExamSubjectMap.subject),
-            joinedload(Exam.sheets).joinedload(ExamSheet.student),
-            joinedload(Exam.sheets).joinedload(ExamSheet.question_results),
-        )
-        .filter(Exam.id == exam_id)
-        .one_or_none()
-    )
+def _load_exam(db: Session, exam_id: int, *, with_results: bool = False) -> Exam:
+    """Load an exam with related rows.
+
+    Collections use selectinload because joining sheets and question_results in
+    a single statement returns sheets x questions rows, which dominates request
+    time on large exams. Question results are fetched only when a caller needs
+    them; other relationships still lazy-load on demand.
+    """
+    options = [
+        joinedload(Exam.layout),
+        selectinload(Exam.subject_maps).joinedload(ExamSubjectMap.subject),
+        selectinload(Exam.sheets).joinedload(ExamSheet.student),
+    ]
+    if with_results:
+        options.append(selectinload(Exam.sheets).selectinload(ExamSheet.question_results))
+    exam = db.query(Exam).options(*options).filter(Exam.id == exam_id).one_or_none()
     if not exam:
         raise HTTPException(404, "Exam not found")
     return exam
@@ -114,7 +118,16 @@ def _load_exam(db: Session, exam_id: int) -> Exam:
 
 @router.get("", response_model=list[ExamOut])
 def list_exams(db: Session = Depends(get_db)):
-    exams = db.query(Exam).options(joinedload(Exam.layout), joinedload(Exam.sheets), joinedload(Exam.subject_maps).joinedload(ExamSubjectMap.subject)).order_by(Exam.id.desc()).all()
+    exams = (
+        db.query(Exam)
+        .options(
+            joinedload(Exam.layout),
+            selectinload(Exam.sheets),
+            selectinload(Exam.subject_maps).joinedload(ExamSubjectMap.subject),
+        )
+        .order_by(Exam.id.desc())
+        .all()
+    )
     return [_exam_out(exam) for exam in exams]
 
 
@@ -509,13 +522,13 @@ def publish_exam(exam_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{exam_id}/results")
 def exam_results(exam_id: int, db: Session = Depends(get_db)):
-    exam = _load_exam(db, exam_id)
+    exam = _load_exam(db, exam_id, with_results=True)
     return build_analytics(exam)
 
 
 @router.get("/{exam_id}/results.csv")
 def exam_results_csv(exam_id: int, db: Session = Depends(get_db)):
-    exam = _load_exam(db, exam_id)
+    exam = _load_exam(db, exam_id, with_results=True)
     analytics = build_analytics(exam)
     buf = StringIO()
     writer = csv.writer(buf)
@@ -558,7 +571,7 @@ def exam_results_csv(exam_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{exam_id}/results.xlsx")
 def exam_results_xlsx(exam_id: int, db: Session = Depends(get_db)):
-    exam = _load_exam(db, exam_id)
+    exam = _load_exam(db, exam_id, with_results=True)
     analytics = build_analytics(exam)
     wb = Workbook()
     ranks = wb.active

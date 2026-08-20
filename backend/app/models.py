@@ -34,7 +34,7 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
 
     token: Mapped[str] = mapped_column(String(80), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("app_users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     user: Mapped[AppUser] = relationship(back_populates="sessions")
@@ -100,7 +100,7 @@ class Exam(Base):
     correct_marks: Mapped[float] = mapped_column(Float, default=4.0)
     wrong_marks: Mapped[float] = mapped_column(Float, default=-1.0)
     unattempted_marks: Mapped[float] = mapped_column(Float, default=0.0)
-    layout_id: Mapped[int] = mapped_column(ForeignKey("omr_layouts.id"))
+    layout_id: Mapped[int] = mapped_column(ForeignKey("omr_layouts.id"), index=True)
     answer_key_json: Mapped[str] = mapped_column(Text, default="{}")
     sample_path: Mapped[str] = mapped_column(String(500), default="")
     test_id: Mapped[str] = mapped_column(String(40), default="")
@@ -128,8 +128,8 @@ class ExamSubjectMap(Base):
     __table_args__ = (UniqueConstraint("exam_id", "subject_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"))
-    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"))
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), index=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), index=True)
     start_q: Mapped[int] = mapped_column(Integer)
     end_q: Mapped[int] = mapped_column(Integer)
 
@@ -141,8 +141,8 @@ class ExamSheet(Base):
     __tablename__ = "exam_sheets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"))
-    student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id"), nullable=True)
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), index=True)
+    student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id"), nullable=True, index=True)
     filename: Mapped[str] = mapped_column(String(255))
     stored_path: Mapped[str] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(30), default="uploaded")
@@ -169,7 +169,7 @@ class SheetQuestionResult(Base):
     __tablename__ = "sheet_question_results"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    sheet_id: Mapped[int] = mapped_column(ForeignKey("exam_sheets.id"))
+    sheet_id: Mapped[int] = mapped_column(ForeignKey("exam_sheets.id"), index=True)
     question_no: Mapped[int] = mapped_column(Integer)
     subject_id: Mapped[int | None] = mapped_column(ForeignKey("subjects.id"), nullable=True)
     marked: Mapped[str] = mapped_column(String(8), default="")
