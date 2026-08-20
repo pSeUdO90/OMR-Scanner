@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Layout } from "../api";
 import { DeleteButton } from "../components/ActionButtons";
@@ -127,11 +127,9 @@ export default function OmrStudio() {
     setGeometry((current) => ({ ...current, ...patch }));
   };
 
-  const mapping = useMemo(() => mappingFromGeometry(blocks, geometry), [blocks, geometry]);
-
   const currentMapping = () => {
     const page = pageRef.current?.querySelector("[data-omr-page='a4']");
-    return page ? mappingFromDom(page, blocks, geometry) : mapping;
+    return page ? mappingFromDom(page, blocks, geometry) : mappingFromGeometry(blocks, geometry);
   };
 
   const exportJson = () => {
@@ -199,7 +197,7 @@ export default function OmrStudio() {
     }
   };
 
-  const patchBlock = (id: string, patch: Partial<StudioBlock>) => {
+  const patchBlock = useCallback((id: string, patch: Partial<StudioBlock>) => {
     if (inUse) return;
     setBlocks((current) =>
       current.map((block) => {
@@ -221,7 +219,12 @@ export default function OmrStudio() {
         return next;
       }),
     );
-  };
+  }, [inUse]);
+
+  const moveBlock = useCallback(
+    (id: string, col0: number, row0: number) => patchBlock(id, { col0, row0 }),
+    [patchBlock],
+  );
 
   const deleteBlock = async (block: StudioBlock) => {
     if (inUse) return;
@@ -434,10 +437,7 @@ export default function OmrStudio() {
             showGrid={showGrid}
             geometry={geometry}
             onSelect={setSelectedId}
-            onMove={(id, col0, row0) => {
-              if (inUse) return;
-              patchBlock(id, { col0, row0 });
-            }}
+            onMove={moveBlock}
           />
         </div>
       </div>
