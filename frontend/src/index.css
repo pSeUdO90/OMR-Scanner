@@ -983,6 +983,20 @@ html.omr-studio-active .main { padding: 1rem 1.2rem 1.5rem; }
 .omr-field input, .omr-field select { padding: 0.28rem 0.4rem; font-size: 0.8rem; }
 .omr-hint { font-size: 0.72rem; margin: 0.25rem 0 0; }
 .omr-actions { display: grid; gap: 0.35rem; margin: 0.45rem 0; }
+.omr-file-btn {
+  justify-content: center;
+  cursor: pointer;
+  min-width: 0;
+  flex: none;
+  background: var(--cyan);
+  color: #051A2D;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 .qa-list { padding-left: 1.1rem; font-size: 0.85rem; }
 .qa-ok { color: var(--cyan); }
 .qa-warn { color: var(--sunset); }
