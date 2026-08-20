@@ -65,6 +65,7 @@ def test_omr_studio_export_schema_strings():
     studio = (ROOT.parent / "pages" / "OmrStudio.tsx").read_text()
     assert "[1, 2, 3, 4, 5, 6]" in studio
     assert "Export JSON" in studio
+    assert "Import OMR JSON" in studio
     assert "Copy JSON" not in studio
     assert "Quality Check" in studio
     assert "Sync With Horizontal Bubble Rows" in studio
@@ -86,6 +87,7 @@ def test_omr_studio_export_schema_strings():
     assert "ViewLink" not in layouts
     assert "Design A4 OMR sheet" not in layouts
     assert "Print PDF" in layouts
+    assert "Import OMR JSON" in layouts
     assert "blank-sheet.pdf" in layouts
     assert "sample_rev" in layouts
     assert "Save As Default" in studio

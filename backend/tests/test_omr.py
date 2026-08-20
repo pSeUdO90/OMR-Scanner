@@ -506,6 +506,101 @@ def test_studio_layout_saves_mapping_json():
     assert client.delete(f"/api/layouts/{clone_id}").status_code == 200
 
 
+def test_import_omr_json_creates_studio_layout():
+    client = TestClient(app)
+    snapshot = {
+        "kind": "gyana-omr-studio",
+        "version": 1,
+        "config": {
+            "title": "Imported Snapshot",
+            "questionCount": 40,
+            "questionColumns": 2,
+            "optionSet": "ABCD",
+            "rollCols": 8,
+            "subjectCols": 3,
+            "seriesCols": 3,
+        },
+        "geometry": {"pageWidthMm": 210, "pageHeightMm": 297, "cellMm": 6.5, "gridCols": 32, "gridRows": 45},
+        "blocks": [
+            {
+                "id": "roll_number_grid",
+                "blockId": "roll_number_grid",
+                "dbColumnBinding": "candidates.roll_number",
+                "blockType": "GRID_DIGIT",
+                "label": "Roll Number",
+                "col0": 3,
+                "row0": 3,
+                "cols": 8,
+                "rows": 10,
+            },
+            {
+                "id": "mcq_column_1",
+                "blockId": "mcq_column_1",
+                "dbColumnBinding": "student_responses.q_01_to_40",
+                "blockType": "GRID_MCQ",
+                "label": "Questions 1–40",
+                "col0": 3,
+                "row0": 15,
+                "cols": 5,
+                "rows": 40,
+                "options": "ABCD",
+                "startQ": 1,
+                "endQ": 40,
+            },
+        ],
+        "mapping": {"documentMetadata": {"pageSize": {"widthMm": 210, "heightMm": 297}}, "dataBlocks": []},
+    }
+    created = client.post(
+        "/api/layouts/studio/import",
+        files={"file": ("layout.json", json.dumps(snapshot), "application/json")},
+    )
+    assert created.status_code == 200, created.text
+    row = created.json()
+    assert row["name"] == "Imported Snapshot"
+    assert row["is_studio"] is True
+    assert row["total_questions"] == 40
+    assert row["studio_blocks"][0]["blockId"] == "roll_number_grid"
+    again = client.post(
+        "/api/layouts/studio/import",
+        files={"file": ("layout.json", json.dumps(snapshot), "application/json")},
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["name"] == "Imported Snapshot import"
+    mapping_only = {
+        "documentMetadata": {
+            "pageSize": {"widthMm": 210, "heightMm": 297},
+            "grid": {"cellMm": 6.5, "columns": 32, "rows": 45, "bubbleDiameterMm": 4.5},
+        },
+        "dataBlocks": [
+            {
+                "blockId": "mcq_column_1",
+                "dbColumnBinding": "student_responses.q_01_to_20",
+                "blockType": "GRID_MCQ",
+                "dimensions": {"rows": 20, "cols": 4, "isColumnMajor": False},
+                "boundsRelative": {"xPct": 15, "yPct": 40, "widthPct": 15, "heightPct": 40},
+                "targets": [],
+            }
+        ],
+    }
+    mapped = client.post(
+        "/api/layouts/studio/import",
+        files={"file": ("map.json", json.dumps(mapping_only), "application/json")},
+    )
+    assert mapped.status_code == 200, mapped.text
+    assert mapped.json()["is_studio"] is True
+    assert mapped.json()["total_questions"] >= 20
+    bad = client.post(
+        "/api/layouts/studio/import",
+        files={"file": ("bad.json", "{not-json", "application/json")},
+    )
+    assert bad.status_code == 400
+    empty = client.post(
+        "/api/layouts/studio/import",
+        files={"file": ("empty.json", json.dumps({"hello": 1}), "application/json")},
+    )
+    assert empty.status_code == 400
+
+
 def test_studio_layout_reads_seven_digit_roll():
     import cv2
     from app.omr.processor import evaluate_image, parse_layout

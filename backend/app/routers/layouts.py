@@ -28,6 +28,7 @@ from ..omr.layouts import (
 )
 from ..omr.processor import load_image, save_image
 from ..omr.sample_file import sample_to_image_bytes
+from ..omr.studio_json import studio_payload_from_json
 from ..schemas import LayoutDesignIn, LayoutOut, StudioLayoutIn
 
 router = APIRouter(prefix="/api/layouts", tags=["layouts"])
@@ -103,7 +104,7 @@ def _unique_slug(db: Session, name: str) -> str:
 
 
 def _write_designed_sample(slug: str, config: dict) -> str:
-    image = generate_designed_sheet(config)
+    image = generate_studio_sheet(config) if config.get("studio") else generate_designed_sheet(config)
     dest_dir = UPLOAD_DIR / "layouts"
     dest_dir.mkdir(parents=True, exist_ok=True)
     stored = dest_dir / f"{slug}-a4-{uuid4().hex[:8]}.jpg"
@@ -172,6 +173,35 @@ def _studio_config(payload: StudioLayoutIn, slug: str) -> dict:
     config["studio_mapping"] = payload.mapping
     config["blocks"] = []
     return config
+
+
+def _available_import_name(db: Session, name: str) -> str:
+    cleaned = (name or "Imported OMR").strip() or "Imported OMR"
+    taken = lambda candidate: db.query(OmrLayout).filter(func.lower(OmrLayout.name) == candidate.lower()).first()
+    if not taken(cleaned):
+        return cleaned
+    base = f"{cleaned} import"
+    if not taken(base):
+        return base
+    n = 2
+    while taken(f"{base} {n}"):
+        n += 1
+    return f"{base} {n}"
+
+
+@router.post("/studio/import", response_model=LayoutOut)
+async def import_studio_json(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    raw = await file.read()
+    try:
+        data = json.loads(raw.decode("utf-8-sig"))
+    except Exception:
+        raise HTTPException(400, "File is not valid JSON")
+    try:
+        payload = studio_payload_from_json(data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    payload.name = _available_import_name(db, payload.name)
+    return save_studio_layout(payload, db)
 
 
 @router.post("/studio", response_model=LayoutOut)
