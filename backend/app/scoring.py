@@ -7,6 +7,7 @@ from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
 from .models import Exam, ExamSheet, SheetQuestionResult, Student
+from .omr.processor import UNREADABLE_DIGIT
 
 
 def parse_question_numbers(value) -> list[int]:
@@ -60,9 +61,14 @@ def _roll_key(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit()).lstrip("0") or "0"
 
 
+def roll_is_complete(detected_roll: str) -> bool:
+    """False when the reader could not resolve every column of the roll grid."""
+    return bool(detected_roll) and UNREADABLE_DIGIT not in detected_roll
+
+
 def find_student_by_roll(db: Session, detected_roll: str) -> Student | None:
     roll = (detected_roll or "").strip()
-    if not roll:
+    if not roll or not roll_is_complete(roll):
         return None
     student = db.query(Student).filter(Student.roll_no == roll).one_or_none()
     if student:
@@ -70,14 +76,16 @@ def find_student_by_roll(db: Session, detected_roll: str) -> Student | None:
     key = _roll_key(roll)
     if len(key) < 4:
         return None
-    for student in db.query(Student).all():
-        stored = (student.roll_no or "").strip()
-        if stored == roll or _roll_key(stored) == key:
-            return student
-        digits = "".join(ch for ch in stored if ch.isdigit())
-        detected_digits = "".join(ch for ch in roll if ch.isdigit())
-        if len(detected_digits) >= 5 and (digits.endswith(detected_digits) or detected_digits.endswith(digits)):
-            return student
+    # Same digits ignoring leading zeros and separators. A partial-digit match
+    # is deliberately not attempted: it used to bind a shortened roll number to
+    # whichever student happened to share its last digits.
+    matches = [
+        student
+        for student in db.query(Student).all()
+        if (student.roll_no or "").strip() == roll or _roll_key(student.roll_no or "") == key
+    ]
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -97,16 +105,19 @@ def bind_sheet_student(db: Session, exam: Exam, sheet: ExamSheet, detected_roll:
             sheet.error_message = ""
         return True
     sheet.student_id = None
-    if scored:
-        sheet.status = "unmatched"
-        sheet.error_message = (
-            "Could not read roll number from the OMR sheet"
-            if not roll
-            else "Roll number not found in student list"
+    if not roll:
+        message = "Could not read roll number from the OMR sheet"
+    elif not roll_is_complete(roll):
+        unreadable = [str(i + 1) for i, ch in enumerate(roll) if ch == UNREADABLE_DIGIT]
+        message = (
+            f"Roll number is incomplete ({roll}): column {', '.join(unreadable)} "
+            "could not be read. Assign this sheet manually."
         )
-    elif roll:
+    else:
+        message = "Roll number not found in student list"
+    if scored or roll:
         sheet.status = "unmatched"
-        sheet.error_message = "Roll number not found in student list"
+        sheet.error_message = message
     return False
 
 
@@ -117,7 +128,23 @@ def subject_for_question(exam: Exam, question_no: int):
     return None
 
 
-def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, str], detected_roll: str) -> None:
+def alignment_warning(alignment: dict | None) -> str:
+    """Operator-facing warning when a page was read without being straightened."""
+    if not alignment or alignment.get("reliable", True):
+        return ""
+    note = str(alignment.get("note") or "the sheet could not be straightened")
+    return f"{note[0].upper()}{note[1:]}, so these answers may be read from the wrong bubbles."
+
+
+def score_sheet(
+    db: Session,
+    exam: Exam,
+    sheet: ExamSheet,
+    answers: dict[str, str],
+    detected_roll: str,
+    *,
+    alignment: dict | None = None,
+) -> None:
     key = json.loads(exam.answer_key_json or "{}")
     sheet.answers_json = json.dumps(answers)
 
@@ -176,7 +203,18 @@ def score_sheet(db: Session, exam: Exam, sheet: ExamSheet, answers: dict[str, st
     sheet.invalid_count = invalid
     sheet.raw_score = round(score, 2)
     sheet.max_score = round(max_score, 2)
+    if alignment is not None:
+        sheet.alignment_json = json.dumps(alignment)
     bind_sheet_student(db, exam, sheet, detected_roll, scored=True)
+
+    warning = alignment_warning(alignment)
+    if warning:
+        # Answers off a page that is still tilted may come from neighbouring
+        # bubbles, so the sheet goes to the review queue instead of reporting a
+        # score nobody can check.
+        sheet.status = "unmatched"
+        existing = (sheet.error_message or "").strip()
+        sheet.error_message = f"{existing} {warning}".strip() if existing else warning
 
 
 def rescore_stored_sheets(db: Session, exam: Exam) -> None:
@@ -184,7 +222,11 @@ def rescore_stored_sheets(db: Session, exam: Exam) -> None:
         if sheet.status not in ("evaluated", "unmatched"):
             continue
         answers = json.loads(sheet.answers_json or "{}")
-        score_sheet(db, exam, sheet, answers, sheet.detected_roll)
+        try:
+            alignment = json.loads(sheet.alignment_json or "{}") or None
+        except ValueError:
+            alignment = None
+        score_sheet(db, exam, sheet, answers, sheet.detected_roll, alignment=alignment)
 
 
 def rwl_bucket(rows: list[SheetQuestionResult], exam: Exam, name: str, subject_id, start_q: int, end_q: int) -> dict:

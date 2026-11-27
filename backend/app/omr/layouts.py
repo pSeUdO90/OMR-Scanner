@@ -3,6 +3,48 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+# Timing marks printed down both edges of a generated sheet, as fractions of the
+# page. The generator draws them and the reader uses them to undo skew, so both
+# sides must read these same numbers: when the two disagree, either the
+# correction never runs or it warps the page and misreads every bubble.
+TIMING_MARK_COUNT = 42
+TIMING_MARK_FIRST_Y = 0.03
+TIMING_MARK_PITCH_Y = 0.022
+TIMING_MARK_LEFT_X = 0.018
+TIMING_MARK_RIGHT_X = 0.972
+TIMING_MARK_HALF_W = 10
+TIMING_MARK_HALF_H = 8
+# A4 at the pixel size these layouts are built at. The half-sizes above are in
+# those pixels, so the fractions below are what let the reader scale a mark to
+# whatever resolution a scan arrives at.
+PAGE_WIDTH_PX = 1654
+PAGE_HEIGHT_PX = 2339
+TIMING_MARK_WIDTH_FRAC = 2 * TIMING_MARK_HALF_W / PAGE_WIDTH_PX
+TIMING_MARK_HEIGHT_FRAC = 2 * TIMING_MARK_HALF_H / PAGE_HEIGHT_PX
+# How far in from each page edge to look, as a fraction of the page width. Wide
+# enough that a tilted ladder stays inside the band over the full page height.
+TIMING_MARK_SEARCH_BAND = 0.18
+
+
+def timing_mark_y(index: int) -> float:
+    return TIMING_MARK_FIRST_Y + index * TIMING_MARK_PITCH_Y
+
+
+def timing_mark_quad() -> list[tuple[float, float]]:
+    """Centres of the first and last timing mark on each edge, as TL, TR, BR, BL.
+
+    These are the points the reader matches against, and they sit inset from the
+    page corners, so a warp must map them here and not to the image corners.
+    """
+    top = timing_mark_y(0)
+    bottom = timing_mark_y(TIMING_MARK_COUNT - 1)
+    return [
+        (TIMING_MARK_LEFT_X, top),
+        (TIMING_MARK_RIGHT_X, top),
+        (TIMING_MARK_RIGHT_X, bottom),
+        (TIMING_MARK_LEFT_X, bottom),
+    ]
+
 
 def _q_column(start: int, end: int, x0: float, y0: float, y1: float) -> list[dict[str, Any]]:
     count = end - start + 1
