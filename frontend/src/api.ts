@@ -32,6 +32,13 @@ export function authFileUrl(path: string) {
   return `${path}${sep}token=${encodeURIComponent(token)}`;
 }
 
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Lets the auth context drop the signed-in user when the server rejects a token. */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
 const json = async (res: Response) => {
   const text = await res.text();
   let data: unknown = text;
@@ -42,6 +49,7 @@ const json = async (res: Response) => {
   }
   if (res.status === 401 && !res.url.includes("/api/auth/login")) {
     clearToken();
+    unauthorizedHandler?.();
   }
   if (!res.ok) {
     const detail = typeof data === "object" && data && "detail" in data ? (data as { detail: unknown }).detail : null;
@@ -60,10 +68,14 @@ const skipSuccessToast = (path: string) =>
   path.includes("/api/auth/me") ||
   path.includes("/import/preview");
 
-const toastSuccess = (path: string, fallback: string) => {
+const toastSuccess = (path: string, fallback: string, data?: unknown) => {
   if (skipSuccessToast(path)) return;
   if (path.includes("/reset-password")) {
-    showToast("ok", "Password reset to 123456");
+    const password =
+      typeof data === "object" && data && "password" in data
+        ? String((data as { password: unknown }).password || "")
+        : "";
+    showToast("ok", password ? `Temporary password: ${password}` : "Password reset");
     return;
   }
   if (path.includes("/auth/password")) {
@@ -89,7 +101,7 @@ export const api = {
       headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body ?? {}),
     }).then(json).then((data) => {
-      toastSuccess(path, "Task completed");
+      toastSuccess(path, "Task completed", data);
       return data;
     }),
   put: (path: string, body: unknown) =>
@@ -98,12 +110,12 @@ export const api = {
       headers: headersFor(body),
       body: body instanceof FormData ? body : JSON.stringify(body),
     }).then(json).then((data) => {
-      toastSuccess(path, "Task completed");
+      toastSuccess(path, "Task completed", data);
       return data;
     }),
   del: (path: string) =>
     fetch(path, { method: "DELETE", headers: headersFor() }).then(json).then((data) => {
-      toastSuccess(path, "Task completed");
+      toastSuccess(path, "Task completed", data);
       return data;
     }),
 };

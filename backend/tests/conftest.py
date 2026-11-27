@@ -1,6 +1,12 @@
-from fastapi.testclient import TestClient as FastAPITestClient
+import os
 
-from app.main import app
+# Seeding only forces a password change when no admin password is configured,
+# so declaring one here keeps a freshly created test database usable.
+os.environ.setdefault("OMR_ADMIN_PASSWORD", "admin")
+
+from fastapi.testclient import TestClient as FastAPITestClient  # noqa: E402
+
+from app.main import app  # noqa: E402
 
 
 class TestClient(FastAPITestClient):

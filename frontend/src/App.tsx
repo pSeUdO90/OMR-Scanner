@@ -42,6 +42,57 @@ function Guard({ tab, user, children }: { tab: string; user: AuthUser; children:
   return <>{children}</>;
 }
 
+function ForcePasswordChange({ user }: { user: AuthUser }) {
+  const { logout, refresh } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const mismatch = Boolean(newPassword && confirmPassword) && newPassword !== confirmPassword;
+  return (
+    <div className="login-screen">
+      <form
+        className="card login-card"
+        onSubmit={async (e: FormEvent) => {
+          e.preventDefault();
+          setErr("");
+          if (newPassword !== confirmPassword) {
+            setErr("New passwords do not match.");
+            return;
+          }
+          setBusy(true);
+          try {
+            await api.put("/api/auth/password", {
+              current_password: currentPassword,
+              new_password: newPassword,
+            });
+            await refresh();
+          } catch (error) {
+            setErr(error instanceof Error ? error.message : "Could not change the password");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <img src={brandingLogoUrl(1)} alt="Gyana Vikash English Medium School" className="login-logo" />
+        <h1>Choose a new password</h1>
+        <p className="muted">
+          {user.display_name || user.username} is signed in with a temporary password. Set your own password to
+          continue.
+        </p>
+        <label>Temporary password<input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoComplete="current-password" required autoFocus /></label>
+        <label>New password<input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" minLength={6} required /></label>
+        <label>Confirm new password<input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" minLength={6} required /></label>
+        {mismatch && <p className="error">New passwords do not match.</p>}
+        {err && <p className="error">{err}</p>}
+        <button type="submit" disabled={busy || mismatch}>{busy ? "Saving…" : "Set Password"}</button>
+        <button type="button" className="secondary" onClick={() => logout()}>Sign Out</button>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
   const { user, ready, logout } = useAuth();
   const [logoSrc, setLogoSrc] = useState(brandingLogoUrl());
@@ -56,6 +107,7 @@ export default function App() {
   }, []);
   if (!ready) return <div className="login-screen"><p className="muted">Loading…</p></div>;
   if (!user) return <Login />;
+  if (user.must_change_password) return <ForcePasswordChange user={user} />;
   const home = NAV_ITEMS.find((item) => can(user, item.tab))?.to || "/";
   return (
     <div className="shell">
