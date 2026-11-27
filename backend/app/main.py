@@ -44,6 +44,8 @@ def _ensure_columns() -> None:
         sheet_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(exam_sheets)")).fetchall()}
         if sheet_cols and "assigned_manually" not in sheet_cols:
             conn.execute(text("ALTER TABLE exam_sheets ADD COLUMN assigned_manually BOOLEAN DEFAULT 0"))
+        if sheet_cols and "alignment_json" not in sheet_cols:
+            conn.execute(text("ALTER TABLE exam_sheets ADD COLUMN alignment_json TEXT DEFAULT '{}'"))
         user_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(app_users)")).fetchall()}
         if user_cols and "must_change_password" not in user_cols:
             conn.execute(text("ALTER TABLE app_users ADD COLUMN must_change_password BOOLEAN DEFAULT 0"))
