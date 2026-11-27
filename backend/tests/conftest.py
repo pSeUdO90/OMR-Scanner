@@ -1,6 +1,21 @@
-from fastapi.testclient import TestClient as FastAPITestClient
+import os
+import tempfile
+from pathlib import Path
 
-from app.main import app
+# These tests create and delete users, exams and sheets, so they get their own
+# database and upload directory. Without this they run against the data the app
+# is serving, and a run can take real records with it.
+_SANDBOX = Path(tempfile.gettempdir()) / "omr-tests"
+os.environ.setdefault("OMR_DATA_DIR", str(_SANDBOX / "data"))
+os.environ.setdefault("OMR_UPLOAD_DIR", str(_SANDBOX / "uploads"))
+
+# Seeding only forces a password change when no admin password is configured,
+# so declaring one here keeps a freshly created test database usable.
+os.environ.setdefault("OMR_ADMIN_PASSWORD", "admin")
+
+from fastapi.testclient import TestClient as FastAPITestClient  # noqa: E402
+
+from app.main import app  # noqa: E402
 
 
 class TestClient(FastAPITestClient):

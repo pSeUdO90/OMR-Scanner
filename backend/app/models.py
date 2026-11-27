@@ -25,6 +25,7 @@ class AppUser(Base):
     display_name: Mapped[str] = mapped_column(String(160), default="")
     role: Mapped[str] = mapped_column(String(20), default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -157,6 +158,9 @@ class ExamSheet(Base):
     invalid_count: Mapped[int] = mapped_column(Integer, default=0)
     overlay_path: Mapped[str] = mapped_column(String(500), default="")
     assigned_manually: Mapped[bool] = mapped_column(default=False)
+    # How the page was straightened. Kept so a rescore, which never re-reads the
+    # image, cannot drop a warning raised when the sheet was first read.
+    alignment_json: Mapped[str] = mapped_column(Text, default="{}")
 
     exam: Mapped[Exam] = relationship(back_populates="sheets")
     student: Mapped[Student | None] = relationship(back_populates="sheets")

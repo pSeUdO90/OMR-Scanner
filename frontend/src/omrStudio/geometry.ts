@@ -82,18 +82,21 @@ export const CONTENT_ROW1 = DEFAULT_GEOMETRY.contentRow1;
 
 export type PointMm = { xMm: number; yMm: number };
 
+/** Where a run of `usedMm` sits: centred in the margins, or on the page if too wide.
+ *
+ * Pinning it to the near margin instead is what pushed the default 208 mm grid
+ * 6 mm off the right edge of the paper, where a printer drops it.
+ */
+function centredStart(usedMm: number, pageMm: number, startMarginMm: number, endMarginMm: number) {
+  const innerMm = Math.max(0, pageMm - startMarginMm - endMarginMm);
+  if (usedMm <= innerMm) return startMarginMm + (innerMm - usedMm) / 2;
+  return (pageMm - usedMm) / 2;
+}
+
 export function gridOrigin(g: SheetGeometry) {
-  const left = g.marginLeftMm ?? 0;
-  const top = g.marginTopMm ?? 0;
-  const right = g.marginRightMm ?? 0;
-  const bottom = g.marginBottomMm ?? 0;
-  const innerW = Math.max(0, g.pageWidthMm - left - right);
-  const innerH = Math.max(0, g.pageHeightMm - top - bottom);
-  const usedW = g.gridCols * g.cellMm;
-  const usedH = g.gridRows * g.cellMm;
   return {
-    xMm: left + Math.max(0, (innerW - usedW) / 2),
-    yMm: top + Math.max(0, (innerH - usedH) / 2),
+    xMm: centredStart(g.gridCols * g.cellMm, g.pageWidthMm, g.marginLeftMm ?? 0, g.marginRightMm ?? 0),
+    yMm: centredStart(g.gridRows * g.cellMm, g.pageHeightMm, g.marginTopMm ?? 0, g.marginBottomMm ?? 0),
   };
 }
 

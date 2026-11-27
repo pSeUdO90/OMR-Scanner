@@ -31,6 +31,38 @@ def test_omr_studio_geometry_spec():
     assert "TIMING_HEIGHT_MM = 2.5" in source
 
 
+def test_studio_grid_is_never_placed_off_the_paper():
+    """A grid wider than the margins must still be printed, and read, on the page.
+
+    The default 32x45 grid at 6.5 mm is 208 mm wide, which does not fit between
+    8 mm margins. Starting it at the left margin put its last column 6 mm past
+    the edge of the paper, where a printer drops it.
+    """
+    from app.omr.studio_render import DEFAULT_GEOMETRY, _origin
+
+    geometry = dict(DEFAULT_GEOMETRY)
+    for cols, rows in ((32, 45), (20, 30), (31, 44)):
+        geometry.update(gridCols=cols, gridRows=rows)
+        origin_x, origin_y = _origin(geometry)
+        used_w = cols * geometry["cellMm"]
+        used_h = rows * geometry["cellMm"]
+        assert origin_x >= 0 and origin_y >= 0, (cols, rows)
+        assert origin_x + used_w <= geometry["pageWidthMm"] + 1e-9, (cols, rows)
+        assert origin_y + used_h <= geometry["pageHeightMm"] + 1e-9, (cols, rows)
+
+    # A grid that does fit the margins is still centred in them, as before.
+    geometry.update(gridCols=20, gridRows=30)
+    assert _origin(geometry) == (40.0, 51.0)
+
+
+def test_studio_quality_check_measures_where_the_grid_lands():
+    source = (ROOT / "qualityCheck.ts").read_text()
+    assert "gridOrigin(g)" in source
+    assert "runs off the" in source
+    geometry = (ROOT / "geometry.ts").read_text()
+    assert "centredStart" in geometry
+
+
 def test_omr_studio_export_schema_strings():
     export = (ROOT / "exportMapping.ts").read_text()
     for key in (

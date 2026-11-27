@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from sqlalchemy.orm import Session
 
@@ -73,13 +74,18 @@ def seed_reference_data(db: Session) -> None:
     db.commit()
 
     if db.query(AppUser).filter(AppUser.username == "admin").one_or_none() is None:
+        # Without OMR_ADMIN_PASSWORD the bootstrap account keeps the well-known
+        # password so a new install is reachable, but it cannot be used for
+        # anything until the password is changed.
+        configured = (os.environ.get("OMR_ADMIN_PASSWORD") or "").strip()
         db.add(
             AppUser(
                 username="admin",
-                password_hash=hash_password("admin"),
+                password_hash=hash_password(configured or "admin"),
                 display_name="Administrator",
                 role="admin",
                 is_active=True,
+                must_change_password=not configured,
             )
         )
         db.commit()

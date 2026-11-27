@@ -368,6 +368,7 @@ async def upload_sheets(exam_id: int, files: list[UploadFile] = File(...), db: S
         try:
             layout = parse_layout(exam.layout.config_json)
             result = evaluate_image(load_image(stored), layout)
+            sheet.alignment_json = json.dumps(result.get("alignment") or {})
             bind_sheet_student(db, exam, sheet, result["roll"])
             db.commit()
             db.refresh(sheet)
@@ -498,7 +499,10 @@ def evaluate_exam(exam_id: int, db: Session = Depends(get_db)):
             overlay_path = str(Path(sheet.stored_path).with_name(f"overlay-{sheet.id}.png"))
             save_image(overlay_path, result["overlay"])
             sheet.overlay_path = overlay_path
-            score_sheet(db, exam, sheet, result["answers"], result["roll"])
+            score_sheet(
+                db, exam, sheet, result["answers"], result["roll"],
+                alignment=result.get("alignment"),
+            )
             evaluated += 1
         except Exception as exc:  # noqa: BLE001
             sheet.status = "error"

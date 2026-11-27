@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { api, clearToken, getToken, setToken } from "./api";
+import { api, clearToken, getToken, setToken, setUnauthorizedHandler } from "./api";
 
 export type AuthUser = {
   id: number;
@@ -7,6 +7,7 @@ export type AuthUser = {
   display_name: string;
   role: string;
   is_active: boolean;
+  must_change_password?: boolean;
   permissions?: Record<string, string[]>;
 };
 
@@ -15,6 +16,7 @@ type AuthContextValue = {
   ready: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -22,6 +24,13 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState(false);
+
+  // A token the server no longer accepts has to clear the signed-in user too,
+  // or the app keeps rendering a shell whose every request fails.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   useEffect(() => {
     if (!getToken()) {
@@ -56,6 +65,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         clearToken();
         setUser(null);
+      },
+      refresh: async () => {
+        const row = await api.get("/api/auth/me");
+        setUser(row as AuthUser);
       },
     }),
     [user, ready],

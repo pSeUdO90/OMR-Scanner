@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
@@ -46,12 +47,19 @@ class UserOut(BaseModel):
     display_name: str
     role: str
     is_active: bool
+    must_change_password: bool = False
     permissions: dict[str, list[str]] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 
 
-RESET_PASSWORD = "123456"
+# Avoids 0/O and 1/l/I so a password read off a screen can be typed back.
+TEMP_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+TEMP_PASSWORD_LENGTH = 10
+
+
+def generate_temp_password() -> str:
+    return "".join(secrets.choice(TEMP_PASSWORD_ALPHABET) for _ in range(TEMP_PASSWORD_LENGTH))
 
 
 class PasswordIn(BaseModel):
@@ -71,6 +79,7 @@ def _user_out(user: AppUser, db: Session) -> UserOut:
         display_name=user.display_name or user.username,
         role=user.role,
         is_active=bool(user.is_active),
+        must_change_password=bool(user.must_change_password),
         permissions=permissions_for_user(user, db),
     )
 
@@ -175,10 +184,14 @@ def reset_user_password(user_id: int, _: AppUser = Depends(require_admin), db: S
     row = db.query(AppUser).filter(AppUser.id == user_id).one_or_none()
     if not row:
         raise HTTPException(404, "User not found")
-    row.password_hash = hash_password(RESET_PASSWORD)
+    temp_password = generate_temp_password()
+    row.password_hash = hash_password(temp_password)
+    row.must_change_password = True
     db.query(UserSession).filter(UserSession.user_id == row.id).delete()
     db.commit()
-    return {"ok": True, "username": row.username, "password": RESET_PASSWORD}
+    # Returned once, to the admin who asked for the reset, so they can pass it
+    # on. The account cannot do anything until the holder replaces it.
+    return {"ok": True, "username": row.username, "password": temp_password}
 
 
 @router.put("/auth/password")
@@ -191,7 +204,10 @@ def change_own_password(payload: PasswordIn, user: AppUser = Depends(get_current
     row = db.get(AppUser, user.id)
     if not row:
         raise HTTPException(404, "User not found")
+    if verify_password(new_password, row.password_hash):
+        raise HTTPException(400, "New password must be different from the current one")
     row.password_hash = hash_password(new_password)
+    row.must_change_password = False
     db.commit()
     return {"ok": True}
 

@@ -86,7 +86,7 @@ def test_logo_upload_under_one_mb_and_public_fetch():
     assert too_big.status_code == 400
 
 
-def test_admin_reset_password_sets_123456():
+def test_admin_reset_password_issues_a_one_time_password():
     client = TestClient(app)
     username = "reset_pw_user"
     created = client.post(
@@ -101,12 +101,14 @@ def test_admin_reset_password_sets_123456():
         row = created.json()
     reset = client.post(f"/api/users/{row['id']}/reset-password")
     assert reset.status_code == 200, reset.text
-    assert reset.json()["password"] == "123456"
+    temp_password = reset.json()["password"]
+    assert temp_password != "123456"
     raw = RawClient(app)
     old = raw.post("/api/auth/login", json={"username": username, "password": "oldpass"})
     assert old.status_code == 401
-    ok = raw.post("/api/auth/login", json={"username": username, "password": "123456"})
+    ok = raw.post("/api/auth/login", json={"username": username, "password": temp_password})
     assert ok.status_code == 200, ok.text
+    assert ok.json()["user"]["must_change_password"] is True
 
 
 def test_user_can_change_own_password():
@@ -170,3 +172,79 @@ def test_edit_student_updates_fields():
     assert updated.json()["name"] == "New Name"
     assert updated.json()["class_name"] == "11"
     assert updated.json()["gender"] == "F"
+
+
+def test_temp_passwords_are_random_and_never_a_known_constant():
+    from app.routers.auth import generate_temp_password
+
+    issued = {generate_temp_password() for _ in range(200)}
+    assert len(issued) > 190
+    assert "123456" not in issued
+    for password in issued:
+        assert len(password) >= 10
+        assert not set(password) & set("0O1lI")
+
+
+def test_account_with_a_temporary_password_is_gated_until_it_is_changed():
+    from uuid import uuid4
+
+    from app.models import UserSession
+
+    client = TestClient(app)
+    username = f"gated_{uuid4().hex[:8]}"
+    created = client.post(
+        "/api/users",
+        json={"username": username, "password": "initial-pw", "display_name": "Gated", "role": "user"},
+    )
+    assert created.status_code == 200, created.text
+    user_id = created.json()["id"]
+    try:
+        first = client.post(f"/api/users/{user_id}/reset-password").json()["password"]
+        second = client.post(f"/api/users/{user_id}/reset-password").json()["password"]
+        assert first != second, "each reset must issue a fresh password"
+
+        raw = RawClient(app)
+        login = raw.post("/api/auth/login", json={"username": username, "password": second})
+        assert login.status_code == 200, login.text
+        assert login.json()["user"]["must_change_password"] is True
+        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+
+        # Gated everywhere except the endpoints needed to set a new password.
+        assert raw.get("/api/students", headers=headers).status_code == 403
+        assert raw.get("/api/exams", headers=headers).status_code == 403
+        assert raw.get("/api/auth/me", headers=headers).status_code == 200
+
+        reuse = raw.put(
+            "/api/auth/password",
+            headers=headers,
+            json={"current_password": second, "new_password": second},
+        )
+        assert reuse.status_code == 400
+
+        changed = raw.put(
+            "/api/auth/password",
+            headers=headers,
+            json={"current_password": second, "new_password": "chosen-by-the-user"},
+        )
+        assert changed.status_code == 200, changed.text
+        assert raw.get("/api/auth/me", headers=headers).json()["must_change_password"] is False
+        assert raw.get("/api/students", headers=headers).status_code == 200
+        assert raw.post("/api/auth/login", json={"username": username, "password": second}).status_code == 401
+    finally:
+        with SessionLocal() as db:
+            row = db.query(AppUser).filter(AppUser.username == username).one_or_none()
+            if row:
+                db.query(UserSession).filter(UserSession.user_id == row.id).delete()
+                db.delete(row)
+                db.commit()
+
+
+def test_configured_admin_password_does_not_force_a_change():
+    from app.seed import seed_reference_data
+
+    # conftest sets OMR_ADMIN_PASSWORD, so the admin this suite signs in as must
+    # not be gated, or every other test here would be locked out.
+    with SessionLocal() as db:
+        seed_reference_data(db)
+        admin = db.query(AppUser).filter(AppUser.username == "admin").one()
+        assert bool(admin.must_change_password) is False

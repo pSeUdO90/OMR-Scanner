@@ -19,6 +19,7 @@ export default function Users() {
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("user");
   const [err, setErr] = useState("");
+  const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const confirm = useConfirm();
   const load = () => api.get("/api/users").then(setRows);
   useEffect(() => { load(); }, []);
@@ -46,9 +47,23 @@ export default function Users() {
 
   return (
     <>
-      <PageTitle icon="users" subtitle="Create logins for this OMR Software. The default administrator is admin / admin.">
+      <PageTitle icon="users" subtitle="Create logins for this OMR Software.">
         Users
       </PageTitle>
+      {issued && (
+        <div className="card">
+          <p>
+            One-time password for <strong>{issued.username}</strong>: <code>{issued.password}</code>
+          </p>
+          <p className="muted">
+            Give it to them now — it is shown only once, and they must set their own password before they can use the
+            app.
+          </p>
+          <div className="row-actions">
+            <button type="button" className="secondary" onClick={() => setIssued(null)}>Dismiss</button>
+          </div>
+        </div>
+      )}
       <form className="card row" onSubmit={onSubmit}>
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
@@ -82,13 +97,19 @@ export default function Users() {
                     onClick={async () => {
                       const ok = await confirm({
                         title: "Reset password",
-                        message: `Reset password for “${row.username}” to 123456? They will need to sign in again.`,
+                        message: `Reset the password for “${row.username}”? They will be signed out and given a one-time password to change at next sign-in.`,
                         confirmLabel: "Reset",
                       });
                       if (!ok) return;
                       setErr("");
                       try {
-                        await api.post(`/api/users/${row.id}/reset-password`);
+                        const res = (await api.post(`/api/users/${row.id}/reset-password`)) as {
+                          username?: string;
+                          password?: string;
+                        };
+                        if (res?.password) {
+                          setIssued({ username: res.username || row.username, password: res.password });
+                        }
                         load();
                       } catch (error) {
                         setErr(error instanceof Error ? error.message : "Could not reset password");

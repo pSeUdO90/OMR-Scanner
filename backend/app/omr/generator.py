@@ -3,17 +3,30 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from .layouts import clone_layout
+from .layouts import (
+    TIMING_MARK_COUNT,
+    TIMING_MARK_HALF_H,
+    TIMING_MARK_HALF_W,
+    TIMING_MARK_LEFT_X,
+    TIMING_MARK_RIGHT_X,
+    clone_layout,
+    timing_mark_y,
+)
 
 
 def _draw_timing_marks(canvas: np.ndarray, layout: dict) -> None:
     h, w = canvas.shape[:2]
-    count = 42
-    for i in range(count):
-        y = int((0.03 + i * 0.022) * h)
-        for x_frac in (0.018, 0.972):
+    for i in range(TIMING_MARK_COUNT):
+        y = int(timing_mark_y(i) * h)
+        for x_frac in (TIMING_MARK_LEFT_X, TIMING_MARK_RIGHT_X):
             x = int(x_frac * w)
-            cv2.rectangle(canvas, (x - 10, y - 8), (x + 10, y + 8), (20, 20, 20), -1)
+            cv2.rectangle(
+                canvas,
+                (x - TIMING_MARK_HALF_W, y - TIMING_MARK_HALF_H),
+                (x + TIMING_MARK_HALF_W, y + TIMING_MARK_HALF_H),
+                (20, 20, 20),
+                -1,
+            )
 
 
 def _fill_bubble(canvas: np.ndarray, nx: float, ny: float, nr: float, filled: bool, *, draw_empty: bool = True) -> None:

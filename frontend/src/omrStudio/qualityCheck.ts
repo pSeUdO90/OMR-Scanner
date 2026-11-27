@@ -1,4 +1,4 @@
-import { DEFAULT_GEOMETRY, type SheetGeometry } from "./geometry";
+import { DEFAULT_GEOMETRY, gridOrigin, type SheetGeometry } from "./geometry";
 import { bubbleRowsForBlocks, type StudioBlock } from "./layoutEngine";
 
 export type QualityItem = { level: "ok" | "warn" | "fail"; code: string; message: string };
@@ -21,10 +21,18 @@ export function runQualityCheck(g: SheetGeometry, blocks: StudioBlock[]): Qualit
   } else {
     const usedW = g.gridCols * g.cellMm;
     const usedH = g.gridRows * g.cellMm;
-    if (usedW > g.pageWidthMm || usedH > g.pageHeightMm) {
-      push("fail", "grid", `Grid ${usedW.toFixed(1)}×${usedH.toFixed(1)} mm exceeds the page.`);
+    const innerW = g.pageWidthMm - g.marginLeftMm - g.marginRightMm;
+    const innerH = g.pageHeightMm - g.marginTopMm - g.marginBottomMm;
+    // Where the grid lands, not just how big it is: a grid that is smaller than
+    // the paper still runs off it if it is placed badly.
+    const start = gridOrigin(g);
+    const size = `Grid ${g.gridCols}×${g.gridRows} at ${g.cellMm} mm is ${usedW.toFixed(1)}×${usedH.toFixed(1)} mm`;
+    if (start.xMm < 0 || start.yMm < 0 || start.xMm + usedW > g.pageWidthMm || start.yMm + usedH > g.pageHeightMm) {
+      push("fail", "grid", `${size} and runs off the ${g.pageWidthMm}×${g.pageHeightMm} mm page.`);
+    } else if (usedW > innerW || usedH > innerH) {
+      push("warn", "grid", `${size} and reaches into the margin: the printable area is ${innerW.toFixed(1)}×${innerH.toFixed(1)} mm.`);
     } else {
-      push("ok", "grid", `Grid ${g.gridCols}×${g.gridRows} at ${g.cellMm} mm fits the page.`);
+      push("ok", "grid", `${size} and fits inside the margins.`);
     }
   }
 

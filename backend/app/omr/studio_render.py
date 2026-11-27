@@ -49,14 +49,24 @@ def _px(mm: float) -> int:
     return max(1, int(round(mm * DPI / MM_PER_INCH)))
 
 
+def _centred_start(used_mm: float, page_mm: float, start_margin_mm: float, end_margin_mm: float) -> float:
+    """Centre a run inside the margins, or on the page when it is too wide to fit.
+
+    Must stay in step with gridOrigin in frontend/src/omrStudio/geometry.ts: the
+    designer draws the sheet from one and the reader looks for bubbles with the
+    other, so a difference between them misreads every sheet.
+    """
+    inner_mm = max(0.0, page_mm - start_margin_mm - end_margin_mm)
+    if used_mm <= inner_mm:
+        return start_margin_mm + (inner_mm - used_mm) / 2
+    return (page_mm - used_mm) / 2
+
+
 def _origin(g: dict) -> tuple[float, float]:
-    left = g["marginLeftMm"]
-    top = g["marginTopMm"]
-    inner_w = max(0.0, g["pageWidthMm"] - left - g["marginRightMm"])
-    inner_h = max(0.0, g["pageHeightMm"] - top - g["marginBottomMm"])
-    used_w = g["gridCols"] * g["cellMm"]
-    used_h = g["gridRows"] * g["cellMm"]
-    return left + max(0.0, (inner_w - used_w) / 2), top + max(0.0, (inner_h - used_h) / 2)
+    return (
+        _centred_start(g["gridCols"] * g["cellMm"], g["pageWidthMm"], g["marginLeftMm"], g["marginRightMm"]),
+        _centred_start(g["gridRows"] * g["cellMm"], g["pageHeightMm"], g["marginTopMm"], g["marginBottomMm"]),
+    )
 
 
 def _cell_center(col: float, row: float, g: dict) -> tuple[float, float]:
