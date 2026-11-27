@@ -55,7 +55,30 @@ export default function Layouts() {
       </PageTitle>
       <p className="card">
         <Link className="btn-view" to="/layouts/studio">Open A4 OMR Studio</Link>
-        <span className="muted"> Design, print, export JSON, and save to this list.</span>
+        <label className="btn-view" style={{ marginLeft: "0.6rem", cursor: "pointer" }}>
+          Import OMR JSON
+          <input
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              setErr("");
+              try {
+                const body = new FormData();
+                body.append("file", file);
+                const created = await api.post("/api/layouts/studio/import", body) as Layout;
+                setMsg(`Imported “${created.name}”.`);
+                load();
+              } catch (error) {
+                setErr(error instanceof Error ? error.message : "Could not import OMR JSON");
+              }
+            }}
+          />
+        </label>
+        <span className="muted"> Design, print, export JSON, import a saved OMR JSON, and save to this list.</span>
       </p>
       {msg && <p>{msg}</p>}
       {err && <p className="error">{err}</p>}

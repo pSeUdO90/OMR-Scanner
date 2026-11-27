@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..database import get_db
 from ..models import Exam, ExamSheet, ExamSubjectMap, Student
@@ -18,17 +18,34 @@ def list_students(db: Session = Depends(get_db)):
 
 @router.get("/options")
 def student_field_options(db: Session = Depends(get_db)):
-    rows = db.query(Student).all()
+    rows = db.query(Student.class_name, Student.section, Student.session).all()
+    classes: set[str] = set()
+    sections: set[str] = set()
+    batches: set[str] = set()
+    per_class: dict[str, dict[str, set[str]]] = {}
+    for class_name, section, session in rows:
+        if section:
+            sections.add(section)
+        if session:
+            batches.add(session)
+        if not class_name:
+            continue
+        classes.add(class_name)
+        bucket = per_class.setdefault(class_name, {"sections": set(), "batches": set()})
+        if section:
+            bucket["sections"].add(section)
+        if session:
+            bucket["batches"].add(session)
     return {
-        "classes": sorted({s.class_name for s in rows if s.class_name}),
-        "sections": sorted({s.section for s in rows if s.section}),
-        "batches": sorted({s.session for s in rows if s.session}),
+        "classes": sorted(classes),
+        "sections": sorted(sections),
+        "batches": sorted(batches),
         "by_class": {
             cls: {
-                "sections": sorted({s.section for s in rows if s.class_name == cls and s.section}),
-                "batches": sorted({s.session for s in rows if s.class_name == cls and s.session}),
+                "sections": sorted(per_class[cls]["sections"]),
+                "batches": sorted(per_class[cls]["batches"]),
             }
-            for cls in sorted({s.class_name for s in rows if s.class_name})
+            for cls in sorted(classes)
         },
     }
 
@@ -79,6 +96,18 @@ def download_template():
     )
 
 
+def _students_by_roll(db: Session, rolls: list[str]) -> dict[str, Student]:
+    """Look up students for many roll numbers without one query per row."""
+    unique = list({roll for roll in rolls if roll})
+    found: dict[str, Student] = {}
+    chunk = 400
+    for start in range(0, len(unique), chunk):
+        batch = unique[start : start + chunk]
+        for student in db.query(Student).filter(Student.roll_no.in_(batch)).all():
+            found[student.roll_no] = student
+    return found
+
+
 @router.post("/import/preview")
 def preview_student_import(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = file.file.read()
@@ -88,8 +117,9 @@ def preview_student_import(file: UploadFile = File(...), db: Session = Depends(g
         raise HTTPException(400, str(exc)) from exc
     existing = []
     new = []
+    found_by_roll = _students_by_roll(db, [row["roll_no"] for row in rows])
     for row in rows:
-        found = db.query(Student).filter(Student.roll_no == row["roll_no"]).one_or_none()
+        found = found_by_roll.get(row["roll_no"])
         if found:
             existing.append({**row, "id": found.id, "current_name": found.name})
         else:
@@ -140,9 +170,12 @@ def student_results(student_id: int, db: Session = Depends(get_db)):
     student = (
         db.query(Student)
         .options(
-            joinedload(Student.sheets).joinedload(ExamSheet.exam).joinedload(Exam.layout),
-            joinedload(Student.sheets).joinedload(ExamSheet.exam).joinedload(Exam.subject_maps).joinedload(ExamSubjectMap.subject),
-            joinedload(Student.sheets).joinedload(ExamSheet.question_results),
+            selectinload(Student.sheets).joinedload(ExamSheet.exam).joinedload(Exam.layout),
+            selectinload(Student.sheets)
+            .joinedload(ExamSheet.exam)
+            .selectinload(Exam.subject_maps)
+            .joinedload(ExamSubjectMap.subject),
+            selectinload(Student.sheets).selectinload(ExamSheet.question_results),
         )
         .filter(Student.id == student_id)
         .one_or_none()

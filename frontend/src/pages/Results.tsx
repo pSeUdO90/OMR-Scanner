@@ -119,17 +119,20 @@ export default function Results() {
             </tr>
           </thead>
           <tbody>
-            {data.results.map((r) => (
-              <tr key={r.roll_no + r.rank}>
-                <td>{r.rank}</td><td>{r.roll_no}</td><td>{r.name}</td>
-                <td>{r.right}</td><td>{r.wrong}</td><td>{r.left}</td>
-                <td>{r.score}/{r.max_score}</td><td>{r.percentage}</td>
-                {data.subjects.map((s) => {
-                  const sub = r.subjects.find((x) => x.subject_name === s.subject_name);
-                  return <td key={s.subject_name}>{sub ? `${sub.right}/${sub.wrong}/${sub.left}` : "—"}</td>;
-                })}
-              </tr>
-            ))}
+            {data.results.map((r) => {
+              const bySubject = new Map(r.subjects.map((sub) => [sub.subject_name, sub]));
+              return (
+                <tr key={r.roll_no + r.rank}>
+                  <td>{r.rank}</td><td>{r.roll_no}</td><td>{r.name}</td>
+                  <td>{r.right}</td><td>{r.wrong}</td><td>{r.left}</td>
+                  <td>{r.score}/{r.max_score}</td><td>{r.percentage}</td>
+                  {data.subjects.map((s) => {
+                    const sub = bySubject.get(s.subject_name);
+                    return <td key={s.subject_name}>{sub ? `${sub.right}/${sub.wrong}/${sub.left}` : "—"}</td>;
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

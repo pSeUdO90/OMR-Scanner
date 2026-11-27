@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Layout } from "../api";
 import { DeleteButton } from "../components/ActionButtons";
@@ -17,6 +17,7 @@ import {
   StudioConfig,
 } from "../omrStudio/layoutEngine";
 import { qualitySummary, runQualityCheck } from "../omrStudio/qualityCheck";
+import { buildStudioExportJson, parseStudioImportJson } from "../omrStudio/importStudioJson";
 import { initialStudioState, hydrateStudioState, saveStudioDefault } from "../omrStudio/studioDefaults";
 import { captureSheetThumbnail } from "../omrStudio/thumbnail";
 
@@ -126,15 +127,14 @@ export default function OmrStudio() {
     setGeometry((current) => ({ ...current, ...patch }));
   };
 
-  const mapping = useMemo(() => mappingFromGeometry(blocks, geometry), [blocks, geometry]);
-
   const currentMapping = () => {
     const page = pageRef.current?.querySelector("[data-omr-page='a4']");
-    return page ? mappingFromDom(page, blocks, geometry) : mapping;
+    return page ? mappingFromDom(page, blocks, geometry) : mappingFromGeometry(blocks, geometry);
   };
 
   const exportJson = () => {
-    const text = JSON.stringify(currentMapping(), null, 2);
+    const doc = buildStudioExportJson(config, geometry, blocks, currentMapping());
+    const text = JSON.stringify(doc, null, 2);
     setJsonText(text);
     const blob = new Blob([text], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -144,6 +144,27 @@ export default function OmrStudio() {
     a.click();
     URL.revokeObjectURL(url);
     setMsg("JSON File Downloaded.");
+  };
+
+  const importJsonFile = (file: File | undefined) => {
+    if (!file || inUse) return;
+    setErr("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || ""));
+        const snapshot = parseStudioImportJson(parsed);
+        setConfig(snapshot.config);
+        setGeometry(snapshot.geometry);
+        setBlocks(snapshot.blocks);
+        setSelectedId(null);
+        setJsonText("");
+        setMsg(`Imported “${snapshot.config.title}” from OMR JSON.`);
+      } catch (error) {
+        setErr(error instanceof Error ? error.message : "Could not import OMR JSON");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const saveLayout = async () => {
@@ -176,7 +197,7 @@ export default function OmrStudio() {
     }
   };
 
-  const patchBlock = (id: string, patch: Partial<StudioBlock>) => {
+  const patchBlock = useCallback((id: string, patch: Partial<StudioBlock>) => {
     if (inUse) return;
     setBlocks((current) =>
       current.map((block) => {
@@ -198,7 +219,12 @@ export default function OmrStudio() {
         return next;
       }),
     );
-  };
+  }, [inUse]);
+
+  const moveBlock = useCallback(
+    (id: string, col0: number, row0: number) => patchBlock(id, { col0, row0 }),
+    [patchBlock],
+  );
 
   const deleteBlock = async (block: StudioBlock) => {
     if (inUse) return;
@@ -379,6 +405,19 @@ export default function OmrStudio() {
           </button>
           <button type="button" onClick={() => window.print()}>Print Sheet</button>
           <button type="button" className="secondary" onClick={exportJson}>Export JSON</button>
+          <label className="secondary omr-file-btn">
+            Import OMR JSON
+            <input
+              type="file"
+              accept="application/json,.json"
+              disabled={inUse}
+              hidden
+              onChange={(e) => {
+                importJsonFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
           <button type="button" className="secondary" onClick={() => setQaOpen(true)}>Quality Check</button>
           <button type="button" disabled={inUse} className="secondary" onClick={() => {
             saveStudioDefault({ config, geometry, blocks });
@@ -398,10 +437,7 @@ export default function OmrStudio() {
             showGrid={showGrid}
             geometry={geometry}
             onSelect={setSelectedId}
-            onMove={(id, col0, row0) => {
-              if (inUse) return;
-              patchBlock(id, { col0, row0 });
-            }}
+            onMove={moveBlock}
           />
         </div>
       </div>
