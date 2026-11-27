@@ -1,4 +1,13 @@
 import os
+import tempfile
+from pathlib import Path
+
+# These tests create and delete users, exams and sheets, so they get their own
+# database and upload directory. Without this they run against the data the app
+# is serving, and a run can take real records with it.
+_SANDBOX = Path(tempfile.gettempdir()) / "omr-tests"
+os.environ.setdefault("OMR_DATA_DIR", str(_SANDBOX / "data"))
+os.environ.setdefault("OMR_UPLOAD_DIR", str(_SANDBOX / "uploads"))
 
 # Seeding only forces a password change when no admin password is configured,
 # so declaring one here keeps a freshly created test database usable.
