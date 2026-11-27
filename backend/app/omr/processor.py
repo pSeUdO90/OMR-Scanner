@@ -249,7 +249,9 @@ def align_sheet_with_meta(image: np.ndarray, layout: dict) -> tuple[np.ndarray, 
         reason = str(exc)
 
     skew_deg = estimate_skew_degrees(gray)
-    if not layout.get("studio") and not layout.get("designed"):
+    # Studio sheets carry their own markers; everything else this app prints,
+    # designed layouts included, carries the timing ladder.
+    if not layout.get("studio"):
         warped = _spec_ladder_warp(gray, dst_w, dst_h)
         if warped is not None:
             return warped, {

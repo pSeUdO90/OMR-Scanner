@@ -90,6 +90,20 @@ def test_tilted_scan_is_straightened_before_it_is_read():
         assert wrong == [], f"{degrees} deg misread {len(wrong)} answers"
 
 
+def test_designed_layouts_are_straightened_too():
+    """They print the same timing ladder, so they get the same correction."""
+    from app.omr.generator import generate_designed_sheet
+    from app.omr.layouts import a4_design_layout
+
+    layout = a4_design_layout("A4 Design", "a4-deskew-test", 40, 2, "ABCD", roll_cols=8)
+    answers = {q: "ABCD"[(q - 1) % 4] for q in range(1, 41)}
+    sheet = generate_designed_sheet(layout, "20250013", answers)
+    result = evaluate_image(_on_scanner_bed(sheet, 2.0), layout)
+    assert result["alignment"]["corrected"] is True
+    assert result["roll"] == "20250013"
+    assert all(result["answers"][str(q)] == answers[q] for q in answers)
+
+
 def test_tilt_that_cannot_be_corrected_is_reported_rather_than_scored_quietly():
     # Too steep to put right, so the reader must not present the result as good.
     result = evaluate_image(_on_scanner_bed(_sheet(), 12.0, margin=0.02), gyana_vikash_180())
