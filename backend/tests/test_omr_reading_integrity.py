@@ -20,6 +20,8 @@ from app.scoring import roll_is_complete
 
 ANSWERS = {q: "ABCD"[(q - 1) % 4] for q in range(1, 181)}
 
+RUBBED_OUT_COLUMN = 4
+
 
 def _sheet(roll: str = "20250013") -> np.ndarray:
     return generate_sheet(gyana_vikash_180(), roll, ANSWERS)
@@ -53,7 +55,7 @@ def _rub_out_roll_column(sheet: np.ndarray, column: int) -> np.ndarray:
 
 
 def test_unreadable_roll_column_holds_its_place():
-    result = evaluate_image(_rub_out_roll_column(_sheet(), 4), gyana_vikash_180())
+    result = evaluate_image(_rub_out_roll_column(_sheet(), RUBBED_OUT_COLUMN), gyana_vikash_180())
     # Dropping the column would read "2025013" and bind to whoever owns it.
     assert result["roll"] == "2025" + UNREADABLE_DIGIT + "013"
     assert result["roll_complete"] is False
@@ -110,3 +112,63 @@ def test_tilt_that_cannot_be_corrected_is_reported_rather_than_scored_quietly():
     assert result["alignment"]["corrected"] is False
     assert result["alignment"]["reliable"] is False
     assert "tilted" in result["alignment"]["note"]
+
+
+def test_a_sheet_read_off_a_tilted_page_is_held_for_review(tmp_path):
+    """The whole way through: a page that could not be straightened is not
+    presented as an evaluated score, and the reason reaches the operator."""
+    import json
+    from datetime import date
+
+    import cv2 as cv
+    from conftest import TestClient
+
+    from app.database import SessionLocal
+    from app.main import app
+    from app.models import Exam, ExamSheet, OmrLayout
+    from app.scoring import score_sheet
+    from app.omr.processor import parse_layout
+
+    client = TestClient(app)
+    layout_row = client.get("/api/layouts").json()
+    assert layout_row, "no layout to evaluate against"
+    with SessionLocal() as db:
+        layout = db.query(OmrLayout).filter(OmrLayout.id == layout_row[0]["id"]).one()
+        exam = Exam(
+            name="Tilt review",
+            exam_date=date(2026, 8, 13),
+            exam_type="Mock",
+            layout_id=layout.id,
+            answer_key_json=json.dumps({str(q): ANSWERS[q] for q in ANSWERS}),
+            correct_marks=4,
+            wrong_marks=-1,
+            unattempted_marks=0,
+        )
+        db.add(exam)
+        db.commit()
+        db.refresh(exam)
+
+        path = tmp_path / "tilted.png"
+        cv.imwrite(str(path), _on_scanner_bed(_sheet(), 12.0, margin=0.02))
+        sheet = ExamSheet(exam_id=exam.id, filename="tilted.png", stored_path=str(path), status="uploaded")
+        db.add(sheet)
+        db.commit()
+        db.refresh(sheet)
+
+        result = evaluate_image(cv.imread(str(path)), parse_layout(layout.config_json))
+        score_sheet(db, exam, sheet, result["answers"], result["roll"], alignment=result["alignment"])
+        db.commit()
+        db.refresh(sheet)
+
+        assert sheet.status == "unmatched"
+        assert "tilted" in sheet.error_message
+        assert json.loads(sheet.alignment_json)["reliable"] is False
+
+        # A later answer-key change must not quietly clear the warning.
+        from app.scoring import rescore_stored_sheets
+
+        rescore_stored_sheets(db, exam)
+        db.commit()
+        db.refresh(sheet)
+        assert sheet.status == "unmatched"
+        assert "tilted" in sheet.error_message
